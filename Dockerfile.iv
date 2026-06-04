@@ -1,0 +1,14 @@
+# IV overlay on top of the pinned exeuntu base. Built by build.sh.
+# BASE defaults to the on-registry tag; build.sh overrides it for other builders.
+ARG BASE=localhost:8000/exeuntu-base:d20aa680543e
+FROM ${BASE}
+
+# DuckDB CLI (pinned)
+RUN curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-amd64.zip -o /tmp/duckdb.zip \
+ && unzip -o /tmp/duckdb.zip -d /usr/local/bin \
+ && rm /tmp/duckdb.zip \
+ && /usr/local/bin/duckdb --version
+
+# exe.dev BYO-image gotcha: tailscaled.service ships disabled. Enable it so the
+# node stays on the tailnet after first-boot install.sh exits (see README).
+RUN systemctl enable tailscaled

@@ -1,0 +1,4 @@
+# pinned exeuntu source is cloned at build time, not vendored
+exeuntu/
+# build + digest output
+*.log
