@@ -17,7 +17,7 @@ private registry (`iv-registry.exe.xyz`).
 
 | File            | Role                                                                   |
 | --------------- | ---------------------------------------------------------------------- |
-| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + tailscaled fix.         |
+| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + Quarto + tailscaled fix. |
 | `build.sh`      | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.  |
 
 The base layer is built from upstream `boldsoftware/exeuntu` at a pinned commit
@@ -54,9 +54,11 @@ to our layer. Don't mirror the upstream number into the image number.
 | ------- | ----------------------------------------------- | -------------- |
 | `1.0.0` | exeuntu base + DuckDB 1.5.3                      | `d20aa680543e` |
 | `1.1.0` | + `systemctl enable tailscaled` (BYO-image fix) | `d20aa680543e` |
+| `1.2.0` | + Quarto 1.9.38 (doc-site rendering)            | `d20aa680543e` |
 
 Pushed digests are recorded in `digests.log` on the registry host
-(`1.1.0` = `sha256:eed9f18a63c717867107d1301554bee2d76b04403a74a553cd69989fd5e54b46`).
+(`1.1.0` = `sha256:eed9f18a63c717867107d1301554bee2d76b04403a74a553cd69989fd5e54b46`;
+`1.2.0` = `sha256:9838519534ab7ed474932c47772d9b4333ca4d7d411371caac38852087005642`).
 
 ## Cutting a new version
 
