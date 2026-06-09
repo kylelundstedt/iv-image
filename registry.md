@@ -14,36 +14,61 @@ title: "Registry"
 The registry stores OCI images pushed by `build.sh`. Consumer VMs pull via the
 exe.dev HTTPS proxy at `iv-registry.exe.xyz:5000`.
 
-## iv-registry runs iv-image
+## iv-registry runs stock exeuntu
 
-Unlike earlier versions, `iv-registry` itself runs `iv-image` — giving it Quarto,
-`provision-docsite`, and every tool baked into the image. This avoids maintaining
-a special-case VM.
+`iv-registry` cannot run `iv-image` — destroying the VM kills the registry it
+would need to pull from (chicken-and-egg). It runs stock `boldsoftware/exeuntu`
+with Quarto installed manually. The doc site is provisioned with a systemd user
+service, same as the iv-image VMs.
 
 ### Disaster recovery (bootstrap from scratch)
 
-If `iv-registry` is destroyed, the registry is gone and you can't pull `iv-image`
-to recreate it. Two-step bootstrap:
+If `iv-registry` is destroyed, rebuild it from scratch:
 
 ```bash
 # 1. Create from stock exeuntu (no --image)
 ssh exe.dev new --name=iv-registry --tag=iv \
   --integration=github-kylelundstedt-iv-image
 
-# 2. Start the registry, clone, build, push
+# 2. Fix Docker DNS — fresh exe.dev VMs have broken DNS inside
+#    Docker builds despite --network=host. Set explicit nameservers:
 ssh iv-registry.exe.xyz
+echo '{"dns": ["1.1.1.1", "8.8.8.8"]}' | sudo tee /etc/docker/daemon.json
+sudo systemctl restart docker
+
+# 3. Start the registry, clone, build, push
 docker run -d --restart=always --name registry \
   -p 5000:5000 -v ~/registry-data:/var/lib/registry registry:2
 git clone https://github-kylelundstedt-iv-image.int.exe.xyz/kylelundstedt/iv-image.git ~/iv-image
-cd ~/iv-image && bash build.sh
+cd ~/iv-image && bash build.sh    # ~5 min from cold cache
 
-# 3. Recreate from iv-image
-exit
-ssh exe.dev rm iv-registry
-ssh exe.dev new --name=iv-registry --tag=iv \
-  --integration=github-kylelundstedt-iv-image \
-  --image=iv-registry.exe.xyz:5000/iv-image:1.3
-# Then: start registry, clone repo, provision-docsite
+# 4. Install Quarto and provision the doc site
+curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v1.9.38/quarto-1.9.38-linux-amd64.tar.gz -o /tmp/quarto.tar.gz
+sudo mkdir -p /opt/quarto
+sudo tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1
+sudo ln -sf /opt/quarto/bin/quarto /usr/local/bin/quarto
+rm /tmp/quarto.tar.gz
+
+# 5. Render and serve the doc site on :8000
+cd ~/iv-image && quarto render
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+loginctl enable-linger exedev
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/docsite.service <<UNIT
+[Unit]
+Description=Doc site on :8000
+After=network-online.target
+[Service]
+Type=simple
+WorkingDirectory=/home/exedev/iv-image/_site
+ExecStart=/usr/bin/python3 -m http.server 8000 --bind 0.0.0.0
+Restart=always
+RestartSec=2
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload
+systemctl --user enable --now docsite.service
 ```
 
 ## Registry data
