@@ -1,0 +1,16 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "iv-image"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: building.md
+        text: Building
+      - href: consuming.md
+        text: Consuming
+      - href: registry.md
+        text: Registry

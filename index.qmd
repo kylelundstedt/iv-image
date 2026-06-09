@@ -1,0 +1,61 @@
+---
+title: "iv-image"
+---
+
+The IV custom OCI image for exe.dev VMs, plus the build/push pipeline for IV's
+private registry (`iv-registry.exe.xyz`).
+
+## Why this exists
+
+- **Escape Bold's default.** exe.dev's stock image is `boldsoftware/exeuntu`,
+  which can change under us. We pin our own base commit.
+- **Preinstall + region.** Bake DuckDB in and control the base so VMs come up
+  identical and in the right region (LAX).
+- **Reproducible compute for GitLake.** Recorded executions pin the image by
+  digest — see the image-identity section of `iv/iv_platform.md` in the gitlake
+  repo (`kylelundstedt/gitlake`).
+
+## Layout
+
+| File            | Role                                                                   |
+| --------------- | ---------------------------------------------------------------------- |
+| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site tooling + tailscaled fix. |
+| `build.sh`      | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.  |
+| `bin/`          | `render-site` + `provision-docsite` — render a repo to `_site` and serve it on `:8000` (baked onto PATH). |
+
+The base layer is built from upstream `boldsoftware/exeuntu` at a pinned commit
+(`build.sh` clones it into `exeuntu/`). We don't vendor exeuntu's Dockerfile.
+
+## Versioning (SemVer)
+
+The overlay is versioned `iv-image:MAJOR.MINOR.PATCH`. `build.sh` pushes the
+exact build plus floating `MAJOR.MINOR` and `MAJOR` aliases:
+
+| Tag                 | Meaning                                 | Mutable?           |
+| ------------------- | --------------------------------------- | ------------------ |
+| `iv-image:1.1.0`    | the exact build — pin this for a recipe | no (by convention) |
+| `iv-image:1.1`      | latest `1.1.x`                          | yes                |
+| `iv-image:1`        | latest `1.x`                            | yes                |
+| `iv-image@sha256:…` | true immutable pin (worker VMs / ER)    | never              |
+
+Bump rules:
+
+- **MAJOR** — re-pin the exeuntu base to a new commit, Ubuntu bump, or remove
+  tooling (breaking).
+- **MINOR** — additive overlay change: bump DuckDB, bake in a tool or
+  `install.sh`, enable a service.
+- **PATCH** — bug fix to our overlay (e.g. fixing a baked-in script).
+
+Note: an upstream component's own patch (DuckDB 1.5.3 → 1.5.4) is an image
+**MINOR** — from the image's contract it's an additive content change, not a fix
+to our layer. Don't mirror the upstream number into the image number.
+
+### History
+
+| Version | Change                                          | exeuntu commit |
+| ------- | ----------------------------------------------- | -------------- |
+| `1.0.0` | exeuntu base + DuckDB 1.5.3                      | `d20aa680543e` |
+| `1.1.0` | + `systemctl enable tailscaled` (BYO-image fix) | `d20aa680543e` |
+| `1.2.0` | + Quarto 1.9.38 (doc-site rendering)            | `d20aa680543e` |
+| `1.3.0` | + doc-site tooling (`render-site`, `provision-docsite`) | `d20aa680543e` |
+| `1.3.1` | fix `provision-docsite` for non-interactive SSH; registry to `:5000` | `d20aa680543e` |
