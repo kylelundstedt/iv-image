@@ -1,6 +1,6 @@
 # IV overlay on top of the pinned exeuntu base. Built by build.sh.
 # BASE defaults to the on-registry tag; build.sh overrides it for other builders.
-ARG BASE=localhost:8000/exeuntu-base:d20aa680543e
+ARG BASE=localhost:5000/exeuntu-base:d20aa680543e
 FROM ${BASE}
 
 # DuckDB CLI (pinned)

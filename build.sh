@@ -5,8 +5,8 @@ set -euxo pipefail
 cd "$(dirname "$0")"
 
 EXEUNTU_COMMIT=d20aa680543e4b4364e54bb9a9248cfb787aaa93   # pinned exeuntu base
-IV_VERSION=1.3.0                                          # SemVer of the IV overlay
-REG=${REG:-localhost:8000}                                # registry to push to
+IV_VERSION=1.3.1                                          # SemVer of the IV overlay
+REG=${REG:-localhost:5000}                                # registry to push to
 IMG=$REG/iv-image
 BASE_TAG=${EXEUNTU_COMMIT:0:12}
 MAJOR=${IV_VERSION%%.*}; MINOR=${IV_VERSION%.*}            # 1 ; 1.1

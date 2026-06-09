@@ -18,6 +18,10 @@ render-site "$REPO"
 # user services must run without an active login session
 loginctl enable-linger "$USER" >/dev/null 2>&1 || true
 
+# D-Bus user session is not available over non-interactive SSH; set the
+# runtime dir explicitly so systemctl --user can find its bus socket.
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
 mkdir -p "$HOME/.config/systemd/user"
 cat > "$HOME/.config/systemd/user/docsite.service" <<EOF
 [Unit]
