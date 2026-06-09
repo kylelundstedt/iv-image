@@ -19,6 +19,10 @@ RUN curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v${QUA
  && rm /tmp/quarto.tar.gz \
  && /usr/local/bin/quarto --version
 
+# Doc-site render+serve tooling — every repo-VM renders its repo to :8000.
+COPY bin/render-site bin/provision-docsite /usr/local/bin/
+RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite
+
 # exe.dev BYO-image gotcha: tailscaled.service ships disabled. Enable it so the
 # node stays on the tailnet after first-boot install.sh exits (see README).
 RUN systemctl enable tailscaled

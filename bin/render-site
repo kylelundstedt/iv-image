@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# render-site [repo-checkout] — quarto render a doc-site repo to <repo>/_site.
+#
+# The ungoverned-simple render (render only, no gate/promote). The governed
+# loop is iv/infra/render-promote.md. Baked into iv-image so every repo-VM has
+# it on PATH; one repo per VM.
+set -euo pipefail
+
+REPO="${1:-$PWD}"
+cd "$REPO"
+
+command -v quarto >/dev/null || {
+  echo "render-site: quarto not on PATH (expected from iv-image:1.2.0+)" >&2
+  exit 1
+}
+
+quarto render
+echo "rendered: $REPO/_site"

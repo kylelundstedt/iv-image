@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# provision-docsite <repo-checkout> — render a doc-site repo and serve its
+# _site on the VM's :8000 exe.dev proxy endpoint as a persistent user service.
+#
+# One repo per VM. Idempotent: re-run to re-render + re-point. To refresh the
+# live site after edits, just `render-site <repo>` again — no restart needed
+# (the http.server serves whatever is in <repo>/_site).
+#
+# This is the ungoverned-simple publish; the governed render->gate->promote
+# loop is iv/infra/render-promote.md.
+set -euo pipefail
+
+REPO="${1:?usage: provision-docsite <repo-checkout>}"
+REPO="$(cd "$REPO" && pwd)"
+
+render-site "$REPO"
+
+# user services must run without an active login session
+loginctl enable-linger "$USER" >/dev/null 2>&1 || true
+
+mkdir -p "$HOME/.config/systemd/user"
+cat > "$HOME/.config/systemd/user/docsite.service" <<EOF
+[Unit]
+Description=Doc site — static _site over http on the exe.dev proxy port (:8000)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$REPO/_site
+# :8000 is the iv-image exe.dev proxy default (verify: ssh exe.dev share show <vm>).
+ExecStart=/usr/bin/python3 -m http.server 8000 --bind 0.0.0.0
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now docsite.service
+echo "docsite live on :8000 -> $REPO/_site"
