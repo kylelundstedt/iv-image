@@ -2,3 +2,7 @@
 exeuntu/
 # build + digest output
 *.log
+
+/.quarto/
+**/*.quarto_ipynb
+/_site/
