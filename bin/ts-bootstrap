@@ -2,6 +2,8 @@
 # ts-bootstrap — Tailscale bootstrap for iv-image VMs.
 # Called at first boot by exe-setup.service (via /exe.dev/setup).
 # Uses only exe.dev-internal DNS (tailscale-api.int.exe.xyz) — no external deps.
+# Runs as user exedev (exe-setup.service sets User=exedev), so sudo is needed
+# for tailscale commands.
 set -e
 
 PROXY=https://tailscale-api.int.exe.xyz
@@ -21,9 +23,9 @@ TS_AUTHKEY=$(curl -sL -X POST "$PROXY/api/v2/tailnet/-/keys" \
 
 # Wait for tailscaled (systemd starts it; may not be ready yet)
 for i in $(seq 1 10); do
-  tailscale status >/dev/null 2>&1 && break
+  sudo tailscale status >/dev/null 2>&1 && break
   sleep 1
 done
 
 # Authenticate
-tailscale up --ssh --accept-dns --hostname="$TS_HOSTNAME" --authkey="$TS_AUTHKEY"
+sudo tailscale up --ssh --accept-dns --hostname="$TS_HOSTNAME" --authkey="$TS_AUTHKEY"
