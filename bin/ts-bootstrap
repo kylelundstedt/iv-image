@@ -9,10 +9,11 @@ set -e
 PROXY=https://tailscale-api.int.exe.xyz
 TS_HOSTNAME=$(hostname)
 
-# Wait for the proxy to be reachable (network may not be up yet at boot)
-for i in $(seq 1 30); do
-  curl -sfo /dev/null --connect-timeout 2 "$PROXY/api/v2/tailnet/-/devices" && break
-  sleep 1
+# Wait for the proxy to be reachable (link-local metadata service at
+# 169.254.169.254 may not be routable during early boot).
+for i in $(seq 1 60); do
+  curl -sfo /dev/null --connect-timeout 5 --max-time 10 "$PROXY/api/v2/tailnet/-/devices" && break
+  sleep 2
 done
 
 # Delete stale Tailscale nodes with this hostname (prevents -2 suffix on rebuild)
