@@ -21,9 +21,12 @@ TS_AUTHKEY=$(curl -sL -X POST "$PROXY/api/v2/tailnet/-/keys" \
   -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
   | jq -r '.key')
 
-# Wait for tailscaled (systemd starts it; may not be ready yet)
-for i in $(seq 1 10); do
-  sudo tailscale status >/dev/null 2>&1 && break
+# Wait for tailscaled socket (systemd starts it; may not be ready yet).
+# Don't use `tailscale status` — it fails until tailscaled finishes its
+# log.tailscale.com bootstrap, which needs external DNS (~30s on first boot).
+# The local API socket appears as soon as tailscaled is ready for commands.
+for i in $(seq 1 30); do
+  [ -S /var/run/tailscale/tailscaled.sock ] && break
   sleep 1
 done
 
