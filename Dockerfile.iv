@@ -20,8 +20,10 @@ RUN curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v${QUA
  && /usr/local/bin/quarto --version
 
 # Doc-site render+serve tooling — every repo-VM renders its repo to :8000.
-COPY bin/render-site bin/provision-docsite /usr/local/bin/
-RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite
+# gen-llms-txt is the agent-twin half: a Quarto post-render hook that emits
+# .md twins + llms.txt + llms-full.txt next to the rendered HTML.
+COPY bin/render-site bin/provision-docsite bin/gen-llms-txt /usr/local/bin/
+RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/local/bin/gen-llms-txt
 
 # Tailscale bootstrap — called at first boot by exe-setup.service via
 # /exe.dev/setup. Uses only exe.dev-internal DNS (no external fetch needed).
