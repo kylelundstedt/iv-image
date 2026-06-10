@@ -23,6 +23,11 @@ RUN curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v${QUA
 COPY bin/render-site bin/provision-docsite /usr/local/bin/
 RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite
 
-# exe.dev BYO-image gotcha: tailscaled.service ships disabled. Enable it so the
-# node stays on the tailnet after first-boot install.sh exits (see README).
+# Tailscale bootstrap — called at first boot by exe-setup.service via
+# /exe.dev/setup. Uses only exe.dev-internal DNS (no external fetch needed).
+COPY bin/ts-bootstrap /usr/local/bin/
+RUN chmod +x /usr/local/bin/ts-bootstrap
+
+# exe.dev BYO-image gotcha: tailscaled.service ships disabled. Enable it so
+# tailscaled is running when ts-bootstrap fires.
 RUN systemctl enable tailscaled
