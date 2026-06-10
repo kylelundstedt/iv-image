@@ -9,6 +9,12 @@ set -e
 PROXY=https://tailscale-api.int.exe.xyz
 TS_HOSTNAME=$(hostname)
 
+# Wait for the proxy to be reachable (network may not be up yet at boot)
+for i in $(seq 1 30); do
+  curl -sfo /dev/null --connect-timeout 2 "$PROXY/api/v2/tailnet/-/devices" && break
+  sleep 1
+done
+
 # Delete stale Tailscale nodes with this hostname (prevents -2 suffix on rebuild)
 for did in $(curl -sL "$PROXY/api/v2/tailnet/-/devices" \
   | jq -r --arg h "$TS_HOSTNAME" '.devices[] | select(.hostname == $h) | .id'); do
@@ -20,6 +26,11 @@ TS_AUTHKEY=$(curl -sL -X POST "$PROXY/api/v2/tailnet/-/keys" \
   -H "Content-Type: application/json" \
   -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
   | jq -r '.key')
+
+if [ -z "$TS_AUTHKEY" ] || [ "$TS_AUTHKEY" = "null" ]; then
+  echo "ts-bootstrap: failed to generate auth key from $PROXY" >&2
+  exit 1
+fi
 
 # Wait for tailscaled socket (systemd starts it; may not be ready yet).
 # Don't use `tailscale status` — it fails until tailscaled finishes its
