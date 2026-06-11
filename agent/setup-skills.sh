@@ -1,12 +1,8 @@
 #!/bin/bash
 # Install team agent skills into ~/.agents/skills/ with symlinks for Claude and
 # Codex. Runs at image build time so VMs start ready — no npm install on boot.
+# Expects node/npx to be on PATH (Dockerfile installs fnm + node before calling this).
 set -euo pipefail
-
-# fnm (exeuntu's node manager) needs eval to put node/npx on PATH.
-# In Docker RUN, .bashrc isn't sourced, so we do it explicitly.
-export PATH="$HOME/.local/bin:$PATH"
-eval "$(fnm env)"
 
 # Ensure target directories exist
 mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills"

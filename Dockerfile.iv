@@ -52,6 +52,15 @@ RUN mkdir -p /home/exedev/.claude /home/exedev/.codex \
 COPY agent/setup-mcp.sh /tmp/setup-mcp.sh
 RUN chmod +x /tmp/setup-mcp.sh && su exedev -c /tmp/setup-mcp.sh && rm /tmp/setup-mcp.sh
 
-# Skills (npm installs cached in image layer — slow but only runs at build time)
+# Skills (npm installs cached in image layer — slow but only runs at build time).
+# The exeuntu base doesn't ship node — it's installed at runtime by exe.dev's init.
+# Install fnm + node here so npx is available for the skills CLI.
 COPY agent/setup-skills.sh /tmp/setup-skills.sh
-RUN chmod +x /tmp/setup-skills.sh && su exedev -c /tmp/setup-skills.sh && rm /tmp/setup-skills.sh
+RUN chmod +x /tmp/setup-skills.sh \
+ && su exedev -lc '\
+      export PATH="$HOME/.local/bin:$PATH" \
+      && curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell --install-dir "$HOME/.local/bin" \
+      && eval "$(fnm env)" \
+      && fnm install --lts \
+      && /tmp/setup-skills.sh' \
+ && rm /tmp/setup-skills.sh
