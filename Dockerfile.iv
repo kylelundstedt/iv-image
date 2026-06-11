@@ -55,12 +55,14 @@ RUN chmod +x /tmp/setup-mcp.sh && su exedev -c /tmp/setup-mcp.sh && rm /tmp/setu
 # Skills (npm installs cached in image layer — slow but only runs at build time).
 # The exeuntu base doesn't ship node — it's installed at runtime by exe.dev's init.
 # Install fnm + node here so npx is available for the skills CLI.
+# fnm's multishell symlinks need XDG_RUNTIME_DIR which doesn't exist in Docker,
+# so we put the fnm node install dir on PATH directly instead of using `fnm env`.
 COPY agent/setup-skills.sh /tmp/setup-skills.sh
 RUN chmod +x /tmp/setup-skills.sh \
  && su exedev -lc '\
       export PATH="$HOME/.local/bin:$PATH" \
       && curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell --install-dir "$HOME/.local/bin" \
-      && eval "$(fnm env)" \
       && fnm install --lts \
+      && export PATH="$(find $HOME/.local/share/fnm/node-versions -path "*/installation/bin" | head -1):$PATH" \
       && /tmp/setup-skills.sh' \
  && rm /tmp/setup-skills.sh
