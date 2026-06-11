@@ -19,7 +19,8 @@ cd ~/iv-image && $EDITOR build.sh && ./build.sh
 
 | File             | Role                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------- |
-| `Dockerfile.iv`  | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site tooling; `tailscaled` enabled but idle (on-demand join). |
+| `Dockerfile.iv`  | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site tooling + agent config; `tailscaled` enabled but idle (on-demand join). |
 | `build.sh`       | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.                         |
 | `bin/`           | `render-site` + `provision-docsite` + `gen-llms-txt` — baked onto PATH.                        |
+| `agent/`         | Team agent config: `AGENTS.md`, Claude Code `settings.json`, MCP + skills setup scripts.       |
 | `*.qmd` / `*.md` | Quarto doc site served at `https://iv-registry.exe.xyz/`.                                     |

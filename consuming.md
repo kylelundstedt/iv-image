@@ -37,6 +37,24 @@ skill does this without a `-1` tailnet name: from a control node it deletes the
 stale tailnet node, recreates from the target image, and rejoins. It **wipes the
 VM's local disk** — reprovision, not migrate. See `tailnet.md`.
 
+## Agent config (baked in)
+
+Every iv-image VM ships with team agent defaults — no setup required:
+
+- **AGENTS.md** — team-wide instructions for Claude Code and Codex (data work
+  conventions, exe.dev SSH discipline, skill usage rules)
+- **Claude Code settings** — SSH guard hook (blocks parallel SSH to exe.dev) and
+  `DISABLE_NON_ESSENTIAL_MODEL_CALLS`
+- **MCP servers** — MotherDuck and GitHub (work) pre-registered via exe.dev proxy
+  (no secrets on the VM)
+- **Skills** — mviz, duckdb-skills, motherduck agent-skills,
+  quarto-authoring, brand-yml, marimo-notebook, marimo-batch, find-skills,
+  archil-guide
+
+Personal dotfiles layer on top. Running your own `install.sh` will overlay
+`AGENTS.md`, add personal MCP servers (github-home, tigris, readwise), and
+install additional skills.
+
 ## Provisioning a doc site
 
 Each repo-VM serves its rendered site on `:8000` (the exe.dev HTTPS proxy port).

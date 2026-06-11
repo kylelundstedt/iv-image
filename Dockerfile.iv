@@ -32,3 +32,26 @@ RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/lo
 # over *.exe.xyz and runs `tailscale up` (minting a one-use key through the
 # exe.dev tailscale-api proxy). See tailnet.md.
 RUN systemctl enable tailscaled
+
+# --- Agent configuration (team defaults) ---
+# AGENTS.md: team-wide instructions for Claude Code and Codex.
+# settings.json: SSH guard hook (blocks parallel SSH to exe.dev) + env.
+# MCP servers: exe.dev proxy endpoints (motherduck, github-work).
+# Skills: pre-installed so VMs start ready — no npm install on first launch.
+#
+# Personal dotfiles layer on top: a user's install.sh can overlay AGENTS.md,
+# add personal MCP servers, and install additional skills.
+COPY agent/AGENTS.md /home/exedev/.agents/AGENTS.md
+COPY agent/settings.json /home/exedev/.claude/settings.json
+RUN mkdir -p /home/exedev/.claude /home/exedev/.codex \
+ && ln -sf ../.agents/AGENTS.md /home/exedev/.claude/CLAUDE.md \
+ && ln -sf ../.agents/AGENTS.md /home/exedev/.codex/AGENTS.md \
+ && chown -R exedev:exedev /home/exedev/.agents /home/exedev/.claude /home/exedev/.codex
+
+# MCP server pre-registration (writes ~/.claude.json)
+COPY agent/setup-mcp.sh /tmp/setup-mcp.sh
+RUN chmod +x /tmp/setup-mcp.sh && su exedev -c /tmp/setup-mcp.sh && rm /tmp/setup-mcp.sh
+
+# Skills (npm installs cached in image layer — slow but only runs at build time)
+COPY agent/setup-skills.sh /tmp/setup-skills.sh
+RUN chmod +x /tmp/setup-skills.sh && su exedev -c /tmp/setup-skills.sh && rm /tmp/setup-skills.sh
