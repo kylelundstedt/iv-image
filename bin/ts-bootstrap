@@ -9,25 +9,39 @@ set -e
 PROXY=https://tailscale-api.int.exe.xyz
 TS_HOSTNAME=$(hostname)
 
-# Retry the auth-key POST until it returns a valid key. The proxy (link-local
-# metadata service at 169.254.169.254) may serve GETs before POSTs work during
-# early boot, so polling reachability with a GET isn't enough — we have to retry
-# the POST itself. ~7 min total (84 attempts x 5s).
-TS_AUTHKEY=""
+# --- Phase 1: Wait for proxy, delete stale nodes, confirm deletion ---
+# The coordination server needs time to propagate deletions — if we register
+# before the old node is fully purged, we get a "-1" suffix.
 for i in $(seq 1 84); do
-  # Delete stale Tailscale nodes with this hostname (prevents -2 suffix on
-  # rebuild). Idempotent — fine to repeat each attempt.
-  for did in $(curl -sL --connect-timeout 5 --max-time 10 "$PROXY/api/v2/tailnet/-/devices" \
-    | jq -r --arg h "$TS_HOSTNAME" '.devices[] | select(.hostname == $h) | .id'); do
+  devices=$(curl -sL --connect-timeout 5 --max-time 10 \
+    "$PROXY/api/v2/tailnet/-/devices" 2>/dev/null) || { sleep 5; continue; }
+
+  # Count nodes with our hostname
+  count=$(echo "$devices" | jq -r --arg h "$TS_HOSTNAME" \
+    '[.devices[] | select(.hostname == $h)] | length')
+
+  # No stale nodes — safe to proceed
+  [ "$count" = "0" ] && break
+
+  # Delete them
+  for did in $(echo "$devices" | jq -r --arg h "$TS_HOSTNAME" \
+    '.devices[] | select(.hostname == $h) | .id'); do
     curl -sL -X DELETE "$PROXY/api/v2/device/$did" >/dev/null
   done
 
-  # Generate single-use ephemeral auth key (tag:dev grants tailnet access)
-  TS_AUTHKEY=$(curl -sL --connect-timeout 5 --max-time 10 -X POST "$PROXY/api/v2/tailnet/-/keys" \
+  # Wait for propagation before re-checking
+  sleep 5
+done
+
+# --- Phase 2: Get auth key ---
+# Retry the POST — proxy may serve GETs before POSTs work during early boot.
+TS_AUTHKEY=""
+for i in $(seq 1 84); do
+  TS_AUTHKEY=$(curl -sL --connect-timeout 5 --max-time 10 -X POST \
+    "$PROXY/api/v2/tailnet/-/keys" \
     -H "Content-Type: application/json" \
     -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
     | jq -r '.key')
-
   [ -n "$TS_AUTHKEY" ] && [ "$TS_AUTHKEY" != "null" ] && break
   sleep 5
 done
@@ -37,14 +51,10 @@ if [ -z "$TS_AUTHKEY" ] || [ "$TS_AUTHKEY" = "null" ]; then
   exit 1
 fi
 
-# Wait for tailscaled socket (systemd starts it; may not be ready yet).
-# Don't use `tailscale status` — it fails until tailscaled finishes its
-# log.tailscale.com bootstrap, which needs external DNS (~30s on first boot).
-# The local API socket appears as soon as tailscaled is ready for commands.
+# --- Phase 3: Wait for tailscaled and authenticate ---
 for i in $(seq 1 30); do
   [ -S /var/run/tailscale/tailscaled.sock ] && break
   sleep 1
 done
 
-# Authenticate
 sudo tailscale up --ssh --accept-dns --hostname="$TS_HOSTNAME" --authkey="$TS_AUTHKEY"
