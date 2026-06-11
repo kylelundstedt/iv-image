@@ -63,6 +63,22 @@ credential permits. The skill only mints an auth key, but if you need hard
 server-side enforcement of "create exactly one key for this VM," put a small
 broker in front instead of attaching the raw proxy.
 
+## Upgrading a VM to a new image
+
+exe.dev applies an image only at VM creation — there is no in-place upgrade. To
+move a VM to a newer `iv-image`, destroy and recreate it under the same name. The
+`upgrade-vm` agent skill does this from a control node:
+
+1. destroy the old VM,
+2. delete its stale tailnet node (the control node holds the delete authority —
+   the VM does not),
+3. recreate from the target image,
+4. rejoin via `join-tailnet`.
+
+Because the stale node is deleted before the new one joins, the rebuilt VM keeps
+its clean name (no `-1`). It **wipes the VM's local disk** — this reprovisions,
+it does not migrate state.
+
 ## Security boundary
 
 The VM never receives the long-lived Tailscale API token or OAuth client secret.
@@ -80,7 +96,9 @@ not clean up the old node.
 If a reused hostname collides, delete the stale node from a trusted admin context
 (the Tailscale admin console, or the API from a workstation holding the real
 credential) — not from the freshly created VM. Or just wait: ephemeral nodes are
-reaped after they disconnect, and the next rebuild gets the clean name.
+reaped after they disconnect, and the next rebuild gets the clean name. For the
+common case of reprovisioning onto a newer image, the `upgrade-vm` skill deletes
+the stale node before recreating — see "Upgrading a VM to a new image" above.
 
 ## Operational notes
 

@@ -29,6 +29,14 @@ over `*.exe.xyz` and runs `tailscale up` with a one-use key minted through the
 Pass `--tag=iv` at creation so the `tailscale-api` integration is attached;
 the join step needs it to mint the key. See `tailnet.md` for the full flow.
 
+## Upgrading to a new image
+
+exe.dev applies an image only at creation, so upgrading a VM to a newer
+`iv-image` means destroy + recreate under the same name. The `upgrade-vm` agent
+skill does this without a `-1` tailnet name: from a control node it deletes the
+stale tailnet node, recreates from the target image, and rejoins. It **wipes the
+VM's local disk** — reprovision, not migrate. See `tailnet.md`.
+
 ## Provisioning a doc site
 
 Each repo-VM serves its rendered site on `:8000` (the exe.dev HTTPS proxy port).

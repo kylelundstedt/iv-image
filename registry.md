@@ -71,6 +71,11 @@ systemctl --user daemon-reload
 systemctl --user enable --now docsite.service
 ```
 
+The rebuilt VM is reached over the exe.dev edge (`ssh iv-registry.exe.xyz`) — it
+does **not** auto-join the tailnet. The registry and doc site work over the
+exe.dev HTTPS proxy regardless; run the `join-tailnet` skill only if you want
+`ssh iv-registry` short-name (Tailscale) access.
+
 ## Registry data
 
 Image layers are stored in a Docker volume at `~/registry-data` on the VM.
