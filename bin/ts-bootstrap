@@ -9,27 +9,31 @@ set -e
 PROXY=https://tailscale-api.int.exe.xyz
 TS_HOSTNAME=$(hostname)
 
-# Wait for the proxy to be reachable (link-local metadata service at
-# 169.254.169.254 may not be routable during early boot).
-for i in $(seq 1 60); do
-  curl -sfo /dev/null --connect-timeout 5 --max-time 10 "$PROXY/api/v2/tailnet/-/devices" && break
-  sleep 2
-done
+# Retry the auth-key POST until it returns a valid key. The proxy (link-local
+# metadata service at 169.254.169.254) may serve GETs before POSTs work during
+# early boot, so polling reachability with a GET isn't enough — we have to retry
+# the POST itself. ~7 min total (84 attempts x 5s).
+TS_AUTHKEY=""
+for i in $(seq 1 84); do
+  # Delete stale Tailscale nodes with this hostname (prevents -2 suffix on
+  # rebuild). Idempotent — fine to repeat each attempt.
+  for did in $(curl -sL --connect-timeout 5 --max-time 10 "$PROXY/api/v2/tailnet/-/devices" \
+    | jq -r --arg h "$TS_HOSTNAME" '.devices[] | select(.hostname == $h) | .id'); do
+    curl -sL -X DELETE "$PROXY/api/v2/device/$did" >/dev/null
+  done
 
-# Delete stale Tailscale nodes with this hostname (prevents -2 suffix on rebuild)
-for did in $(curl -sL "$PROXY/api/v2/tailnet/-/devices" \
-  | jq -r --arg h "$TS_HOSTNAME" '.devices[] | select(.hostname == $h) | .id'); do
-  curl -sL -X DELETE "$PROXY/api/v2/device/$did" >/dev/null
-done
+  # Generate single-use ephemeral auth key (tag:dev grants tailnet access)
+  TS_AUTHKEY=$(curl -sL --connect-timeout 5 --max-time 10 -X POST "$PROXY/api/v2/tailnet/-/keys" \
+    -H "Content-Type: application/json" \
+    -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
+    | jq -r '.key')
 
-# Generate single-use ephemeral auth key (tag:dev grants tailnet access)
-TS_AUTHKEY=$(curl -sL -X POST "$PROXY/api/v2/tailnet/-/keys" \
-  -H "Content-Type: application/json" \
-  -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
-  | jq -r '.key')
+  [ -n "$TS_AUTHKEY" ] && [ "$TS_AUTHKEY" != "null" ] && break
+  sleep 5
+done
 
 if [ -z "$TS_AUTHKEY" ] || [ "$TS_AUTHKEY" = "null" ]; then
-  echo "ts-bootstrap: failed to generate auth key from $PROXY" >&2
+  echo "ts-bootstrap: failed to generate auth key from $PROXY after retries" >&2
   exit 1
 fi
 

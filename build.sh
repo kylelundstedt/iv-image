@@ -5,7 +5,7 @@ set -euxo pipefail
 cd "$(dirname "$0")"
 
 EXEUNTU_COMMIT=d20aa680543e4b4364e54bb9a9248cfb787aaa93   # pinned exeuntu base
-IV_VERSION=1.5.0                                          # SemVer of the IV overlay
+IV_VERSION=1.6.0                                          # SemVer of the IV overlay
 REG=${REG:-localhost:5000}                                # registry to push to
 IMG=$REG/iv-image
 BASE_TAG=${EXEUNTU_COMMIT:0:12}
