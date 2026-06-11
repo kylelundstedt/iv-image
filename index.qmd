@@ -19,9 +19,9 @@ private registry (`iv-registry.exe.xyz`).
 
 | File            | Role                                                                   |
 | --------------- | ---------------------------------------------------------------------- |
-| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site tooling + tailscaled fix. |
+| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site tooling + Tailscale join service. |
 | `build.sh`      | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.  |
-| `bin/`          | `render-site` + `provision-docsite` + `gen-llms-txt` + `ts-bootstrap` — baked onto PATH in the image. |
+| `bin/`          | `render-site` + `provision-docsite` + `gen-llms-txt` + `iv-tailscale-join` — baked onto PATH in the image. |
 
 The base layer is built from upstream `boldsoftware/exeuntu` at a pinned commit
 (`build.sh` clones it into `exeuntu/`). We don't vendor exeuntu's Dockerfile.
@@ -61,3 +61,6 @@ to our layer. Don't mirror the upstream number into the image number.
 | `1.3.1` | fix `provision-docsite` for non-interactive SSH; registry to `:5000` | `d20aa680543e` |
 | `1.4.0` | + Tailscale bootstrap baked in (`ts-bootstrap`, `tailscaled` enabled) | `d20aa680543e` |
 | `1.5.0` | + `gen-llms-txt` (Quarto post-render hook: `.md` twins + `llms.txt`) | `d20aa680543e` |
+| `1.6.0` | harden `ts-bootstrap` proxy/auth-key retries | `d20aa680543e` |
+| `1.7.0` | fix stale-node race and retry auth-key POST | `d20aa680543e` |
+| `1.8.0` | replace setup-script bootstrap with image-owned `iv-tailscale-join.service` | `d20aa680543e` |

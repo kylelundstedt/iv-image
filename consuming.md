@@ -5,18 +5,23 @@ title: "Consuming"
 ## Creating a VM from iv-image
 
 ```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.3 --name=<vm> --tag=iv
+ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.8 --name=<vm> --tag=iv
 ```
 
 Pin to an exact build or digest for reproducibility:
 
 ```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.3.1 ...
+ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.8.0 ...
 ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image@sha256:... ...
 ```
 
 The image is consumed only at VM creation — there is no default-image setting,
 so pass `--image` on every `new`.
+
+The `iv` tag should attach the existing `tailscale-api` integration. Without
+that integration, the VM still boots, but `iv-tailscale-join.service` will keep
+retrying until it can mint a one-use Tailscale auth key through
+`tailscale-api.int.exe.xyz`.
 
 ## Provisioning a doc site
 

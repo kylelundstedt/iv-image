@@ -9,7 +9,7 @@ private registry (`iv-registry.exe.xyz`).
 
 ```bash
 # Create a VM from the latest 1.x image
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.5 --name=<vm> --tag=iv
+ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.8 --name=<vm> --tag=iv
 
 # Cut a new version (on iv-registry)
 cd ~/iv-image && $EDITOR build.sh && ./build.sh
@@ -17,9 +17,9 @@ cd ~/iv-image && $EDITOR build.sh && ./build.sh
 
 ## Layout
 
-| File            | Role                                                                   |
-| --------------- | ---------------------------------------------------------------------- |
-| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site + Tailscale bootstrap. |
-| `build.sh`      | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.  |
-| `bin/`          | `render-site` + `provision-docsite` + `gen-llms-txt` + `ts-bootstrap` — baked onto PATH. |
-| `*.qmd` / `*.md` | Quarto doc site served at `https://iv-registry.exe.xyz/`.            |
+| File             | Role                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `Dockerfile.iv`  | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site + Tailscale join service.    |
+| `build.sh`       | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.                         |
+| `bin/`           | `render-site` + `provision-docsite` + `gen-llms-txt` + `iv-tailscale-join` — baked onto PATH. |
+| `*.qmd` / `*.md` | Quarto doc site served at `https://iv-registry.exe.xyz/`.                                     |

@@ -25,6 +25,9 @@ REG=iv-registry.exe.xyz:5000 ./build.sh
 - **Build on amd64**, not an arm Mac — exe.dev VMs are amd64.
 - **tailscaled ships disabled on BYO images.** exe.dev only enables it on its own
   default image; apt's postinst `systemctl enable` no-ops at build time (no PID
-  1). We add an explicit `RUN systemctl enable tailscaled` (verified `is-enabled`
-  = enabled). Without it the node drops off the tailnet when first-boot
-  `install.sh` exits and short-form `ssh <vm>` times out.
+  1). We explicitly enable `tailscaled.service` and
+  `iv-tailscale-join.service` in `Dockerfile.iv`.
+- **Tailnet join depends on the exe.dev integration, not a baked secret.**
+  VMs need the `tailscale-api` integration attached, usually through `--tag=iv`.
+  The image calls `tailscale-api.int.exe.xyz`; the Tailscale API secret remains
+  in exe.dev's integration layer.

@@ -12,5 +12,7 @@ website:
         text: Building
       - href: consuming.md
         text: Consuming
+      - href: tailnet.md
+        text: Tailnet
       - href: registry.md
         text: Registry

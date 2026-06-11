@@ -1,60 +1,9 @@
-#!/bin/bash
-# ts-bootstrap — Tailscale bootstrap for iv-image VMs.
-# Called at first boot by exe-setup.service (via /exe.dev/setup).
-# Uses only exe.dev-internal DNS (tailscale-api.int.exe.xyz) — no external deps.
-# Runs as user exedev (exe-setup.service sets User=exedev), so sudo is needed
-# for tailscale commands.
-set -e
+#!/usr/bin/env bash
+# Compatibility entry point for older /exe.dev/setup defaults.
+set -euo pipefail
 
-PROXY=https://tailscale-api.int.exe.xyz
-TS_HOSTNAME=$(hostname)
-
-# --- Phase 1: Wait for proxy, delete stale nodes, confirm deletion ---
-# The coordination server needs time to propagate deletions — if we register
-# before the old node is fully purged, we get a "-1" suffix.
-for i in $(seq 1 84); do
-  devices=$(curl -sL --connect-timeout 5 --max-time 10 \
-    "$PROXY/api/v2/tailnet/-/devices" 2>/dev/null) || { sleep 5; continue; }
-
-  # Count nodes with our hostname
-  count=$(echo "$devices" | jq -r --arg h "$TS_HOSTNAME" \
-    '[.devices[] | select(.hostname == $h)] | length')
-
-  # No stale nodes — safe to proceed
-  [ "$count" = "0" ] && break
-
-  # Delete them
-  for did in $(echo "$devices" | jq -r --arg h "$TS_HOSTNAME" \
-    '.devices[] | select(.hostname == $h) | .id'); do
-    curl -sL -X DELETE "$PROXY/api/v2/device/$did" >/dev/null
-  done
-
-  # Wait for propagation before re-checking
-  sleep 5
-done
-
-# --- Phase 2: Get auth key ---
-# Retry the POST — proxy may serve GETs before POSTs work during early boot.
-TS_AUTHKEY=""
-for i in $(seq 1 84); do
-  TS_AUTHKEY=$(curl -sL --connect-timeout 5 --max-time 10 -X POST \
-    "$PROXY/api/v2/tailnet/-/keys" \
-    -H "Content-Type: application/json" \
-    -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
-    | jq -r '.key')
-  [ -n "$TS_AUTHKEY" ] && [ "$TS_AUTHKEY" != "null" ] && break
-  sleep 5
-done
-
-if [ -z "$TS_AUTHKEY" ] || [ "$TS_AUTHKEY" = "null" ]; then
-  echo "ts-bootstrap: failed to generate auth key from $PROXY after retries" >&2
-  exit 1
+if [ "$(id -u)" -eq 0 ]; then
+  exec /usr/local/bin/iv-tailscale-join "$@"
 fi
 
-# --- Phase 3: Wait for tailscaled and authenticate ---
-for i in $(seq 1 30); do
-  [ -S /var/run/tailscale/tailscaled.sock ] && break
-  sleep 1
-done
-
-sudo tailscale up --ssh --accept-dns --hostname="$TS_HOSTNAME" --authkey="$TS_AUTHKEY"
+exec sudo /usr/local/bin/iv-tailscale-join "$@"

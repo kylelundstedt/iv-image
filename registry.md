@@ -6,9 +6,9 @@ title: "Registry"
 
 `iv-registry` is an exe.dev VM running two services:
 
-| Port    | Service                        | Access                                     |
-| ------- | ------------------------------ | ------------------------------------------ |
-| `:8000` | Doc site (this site)           | `https://iv-registry.exe.xyz/` (Private)   |
+| Port    | Service                        | Access                                        |
+| ------- | ------------------------------ | --------------------------------------------- |
+| `:8000` | Doc site (this site)           | `https://iv-registry.exe.xyz/` (Private)      |
 | `:5000` | Docker registry (`registry:2`) | `https://iv-registry.exe.xyz:5000/` (Private) |
 
 The registry stores OCI images pushed by `build.sh`. Consumer VMs pull via the

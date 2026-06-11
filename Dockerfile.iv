@@ -25,11 +25,14 @@ RUN curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v${QUA
 COPY bin/render-site bin/provision-docsite bin/gen-llms-txt /usr/local/bin/
 RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/local/bin/gen-llms-txt
 
-# Tailscale bootstrap — called at first boot by exe-setup.service via
-# /exe.dev/setup. Uses only exe.dev-internal DNS (no external fetch needed).
-COPY bin/ts-bootstrap /usr/local/bin/
-RUN chmod +x /usr/local/bin/ts-bootstrap
+# Tailscale join — owned by the image and started by systemd at boot. It uses
+# exe.dev's tailscale-api HTTP proxy integration, so the Tailscale API secret is
+# injected on the network and never lands on the VM.
+COPY bin/iv-tailscale-join bin/ts-bootstrap /usr/local/bin/
+RUN chmod +x /usr/local/bin/iv-tailscale-join /usr/local/bin/ts-bootstrap
+COPY systemd/iv-tailscale-join.service /etc/systemd/system/
+RUN chmod 644 /etc/systemd/system/iv-tailscale-join.service
 
 # exe.dev BYO-image gotcha: tailscaled.service ships disabled. Enable it so
-# tailscaled is running when ts-bootstrap fires.
-RUN systemctl enable tailscaled
+# tailscaled is running when the join service fires.
+RUN systemctl enable tailscaled iv-tailscale-join.service

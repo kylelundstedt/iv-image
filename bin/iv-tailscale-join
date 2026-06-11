@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Join an exe.dev VM to IV's tailnet without putting the Tailscale API secret
+# on the VM. The long-lived credential is held by the exe.dev HTTP proxy
+# integration at tailscale-api.int.exe.xyz.
+set -Eeuo pipefail
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+TAILSCALE_API_URL=${IV_TAILSCALE_API_URL:-https://tailscale-api.int.exe.xyz}
+TAILSCALE_TAG=${IV_TAILSCALE_TAG:-tag:dev}
+TAILSCALE_HOSTNAME=${IV_TAILSCALE_HOSTNAME:-$(hostname)}
+AUTHKEY_EXPIRY_SECONDS=${IV_TAILSCALE_AUTHKEY_EXPIRY_SECONDS:-600}
+AUTHKEY_ATTEMPTS=${IV_TAILSCALE_AUTHKEY_ATTEMPTS:-60}
+SOCKET_ATTEMPTS=${IV_TAILSCALE_SOCKET_ATTEMPTS:-60}
+
+log() {
+  printf 'iv-tailscale-join: %s\n' "$*" >&2
+}
+
+need() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    log "missing required command: $1"
+    exit 1
+  fi
+}
+
+tailscale_backend_state() {
+  tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' 2>/dev/null || true
+}
+
+wait_for_tailscaled() {
+  for _ in $(seq 1 "$SOCKET_ATTEMPTS"); do
+    if [ -S /var/run/tailscale/tailscaled.sock ] || [ -S /run/tailscale/tailscaled.sock ]; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  log "tailscaled socket did not appear"
+  return 1
+}
+
+ensure_tailscale_ssh() {
+  if tailscale set --ssh >/dev/null 2>&1; then
+    log "Tailscale is already running; ensured Tailscale SSH is enabled"
+  else
+    log "Tailscale is already running; could not update SSH setting"
+  fi
+}
+
+request_auth_key() {
+  local payload response key message sleep_seconds
+  sleep_seconds=2
+
+  payload=$(
+    jq -nc \
+      --arg tag "$TAILSCALE_TAG" \
+      --arg description "iv-image bootstrap for ${TAILSCALE_HOSTNAME}" \
+      --argjson expiry "$AUTHKEY_EXPIRY_SECONDS" \
+      '{
+        capabilities: {
+          devices: {
+            create: {
+              reusable: false,
+              ephemeral: true,
+              preauthorized: true,
+              tags: [$tag]
+            }
+          }
+        },
+        expirySeconds: $expiry,
+        description: $description
+      }'
+  )
+
+  for attempt in $(seq 1 "$AUTHKEY_ATTEMPTS"); do
+    response=$(
+      curl -fsSL --connect-timeout 5 --max-time 10 \
+        -H "Content-Type: application/json" \
+        -X POST "${TAILSCALE_API_URL%/}/api/v2/tailnet/-/keys" \
+        -d "$payload" 2>&1
+    ) && {
+      key=$(printf '%s' "$response" | jq -r '.key // empty' 2>/dev/null || true)
+      if [[ "$key" == tskey-* ]]; then
+        printf '%s' "$key"
+        return 0
+      fi
+
+      message=$(printf '%s' "$response" | jq -r '.message // empty' 2>/dev/null || true)
+      if [ -n "$message" ]; then
+        log "auth key response did not include a key: $message"
+      else
+        log "auth key response did not include a key"
+      fi
+    }
+
+    if [ "$attempt" -lt "$AUTHKEY_ATTEMPTS" ]; then
+      log "auth key request failed; retrying in ${sleep_seconds}s (${attempt}/${AUTHKEY_ATTEMPTS})"
+      sleep "$sleep_seconds"
+      if [ "$sleep_seconds" -lt 10 ]; then
+        sleep_seconds=$((sleep_seconds * 2))
+      fi
+    fi
+  done
+
+  log "failed to get a Tailscale auth key from ${TAILSCALE_API_URL}"
+  return 1
+}
+
+join_tailnet() {
+  local auth_key
+  auth_key=$(request_auth_key)
+
+  log "joining tailnet as ${TAILSCALE_HOSTNAME} with ${TAILSCALE_TAG}"
+  tailscale up \
+    --auth-key=file:/dev/fd/3 \
+    --hostname="$TAILSCALE_HOSTNAME" \
+    --ssh \
+    --accept-dns \
+    --timeout=60s \
+    3<<<"$auth_key"
+}
+
+main() {
+  need curl
+  need jq
+  need tailscale
+
+  wait_for_tailscaled
+
+  case "$(tailscale_backend_state)" in
+    Running)
+      ensure_tailscale_ssh
+      return 0
+      ;;
+  esac
+
+  join_tailnet
+
+  if [ "$(tailscale_backend_state)" != "Running" ]; then
+    log "tailscale up returned but backend is not Running"
+    return 1
+  fi
+
+  log "joined tailnet"
+}
+
+main "$@"
