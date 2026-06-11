@@ -4,99 +4,89 @@ title: "Tailnet Join"
 
 ## Contract
 
-Every VM created from `iv-image` should join IV's Tailscale tailnet as soon as
-systemd starts. The image owns that behavior directly through
-`iv-tailscale-join.service`; it does not depend on `/exe.dev/setup`.
+`iv-image` VMs do **not** join the Tailscale tailnet automatically. The image
+ships `tailscaled` enabled but idle — no baked bootstrap script, no
+`/exe.dev/setup` hook, no Tailscale API access on the VM. A VM stays off the
+tailnet until something explicitly runs `tailscale up` on it.
 
-The long-lived Tailscale credential stays outside the VM. The VM talks to
-exe.dev's `tailscale-api` HTTP proxy integration at
-`https://tailscale-api.int.exe.xyz`. exe.dev integrations inject secrets on the
-network side, so the VM can use the integration endpoint without reading the
-secret value.
+This is deliberate. Auto-join-on-boot put every VM on the tailnet whether or not
+it belonged there, and the logic to do it had to live somewhere — a per-account
+setup hook or baked-in image code — both of which drifted and coupled unrelated
+things together. On-demand join keeps the default clean: a VM is just a VM until
+you decide it should be a tailnet node.
+
+## Joining a VM (the `join-tailnet` skill)
+
+A fresh VM is reachable over the exe.dev edge (`ssh <vm>.exe.xyz`) before it is
+on the tailnet. The `join-tailnet` agent skill uses that edge path to bootstrap
+the tailnet:
+
+1. SSH into the VM over `*.exe.xyz` (no tailnet required).
+2. Mint a one-use, ephemeral, preauthorized `tag:dev` auth key by POSTing to the
+   `tailscale-api` HTTP proxy (`https://tailscale-api.int.exe.xyz`). exe.dev
+   injects the real API credential at the proxy layer, so the VM never sees the
+   secret.
+3. Run `tailscale up --ssh --accept-dns --hostname=$(hostname)` with that key.
+
+By hand it is two commands on the VM:
+
+```bash
+ssh -o ConnectTimeout=30 <vm>.exe.xyz 'bash -s' <<'REMOTE'
+set -euo pipefail
+KEY=$(curl -fsSL -X POST https://tailscale-api.int.exe.xyz/api/v2/tailnet/-/keys \
+  -H "Content-Type: application/json" \
+  -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
+  | jq -r .key)
+sudo tailscale up --ssh --accept-dns --hostname="$(hostname)" --authkey="$KEY"
+tailscale status
+REMOTE
+```
+
+After it joins, use `ssh <vm>` (Tailscale SSH) for everything else.
 
 ## Required exe.dev integration
 
-Attach the existing `tailscale-api` integration to any VM that should autojoin.
-For IV VMs, attach it to the `iv` tag:
+The join step needs the `tailscale-api` integration attached to the VM so it can
+mint the key. Attach it via the `iv` tag and create VMs with that tag:
 
 ```bash
 ssh exe.dev integrations attach tailscale-api tag:iv
+ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:2 --name=<vm> --tag=iv
 ```
 
-Then create VMs with the `iv` tag:
+The integration must proxy to the Tailscale API base URL `https://api.tailscale.com`;
+the VM-side endpoint is `https://tailscale-api.int.exe.xyz/api/v2/tailnet/-/keys`.
 
-```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.8 --name=<vm> --tag=iv
-```
-
-The integration must proxy to the Tailscale API base URL:
-
-```text
-https://api.tailscale.com
-```
-
-The VM-side service expects this endpoint:
-
-```text
-https://tailscale-api.int.exe.xyz/api/v2/tailnet/-/keys
-```
-
-The image only calls the auth-key creation endpoint. A direct HTTP proxy
-integration does not by itself enforce that path; code running on an attached VM
-can call whatever Tailscale API endpoints the integration's backing credential
-permits. Keep the integration attached only to trusted VM tags, and prefer a
-small broker service if you need hard server-side enforcement of "create exactly
-one auth key for this VM".
-
-## Boot flow
-
-1. `tailscaled.service` starts.
-2. `iv-tailscale-join.service` waits for the local `tailscaled` socket.
-3. If Tailscale is already running, the service only ensures Tailscale SSH is
-   enabled.
-4. Otherwise, it asks `tailscale-api.int.exe.xyz` for a one-use, ephemeral,
-   preauthorized auth key tagged `tag:dev`.
-5. The auth key expires after 10 minutes and is passed to `tailscale up` through
-   an inherited file descriptor, not argv, environment, shell history, or disk.
-6. The VM joins with `--ssh`, `--accept-dns`, and `--hostname=$(hostname)`.
-
-The service retries internally while the integration is coming up, and systemd
-restarts it on failure. A missing or unattached integration is therefore a
-recoverable boot problem: attach `tailscale-api` and restart the unit.
-
-```bash
-sudo systemctl restart iv-tailscale-join.service
-journalctl -u iv-tailscale-join.service -n 100 --no-pager
-```
+A direct HTTP proxy integration does not restrict which Tailscale API paths an
+attached VM can call — code on the VM can hit any endpoint the backing
+credential permits. The skill only mints an auth key, but if you need hard
+server-side enforcement of "create exactly one key for this VM," put a small
+broker in front instead of attaching the raw proxy.
 
 ## Security boundary
 
 The VM never receives the long-lived Tailscale API token or OAuth client secret.
-It receives only the one-use auth key it must present to `tailscale up`. That key
-is short-lived, non-reusable, preauthorized, and tagged.
+It receives only the one-use auth key it presents to `tailscale up` — short-lived,
+non-reusable, preauthorized, and tagged. Do not bake Tailscale credentials into
+the image, a setup script, environment variables, dotfiles, or repo files.
 
-Do not bake Tailscale credentials into the image, `/exe.dev/setup`, environment
-variables, dotfiles, or repo files.
+## Stale-node `-1` suffix
 
-## Why stale-node deletion is not in the VM
+Tailscale MagicDNS names are sticky per node. If you rebuild a VM with a hostname
+that an old, not-yet-reaped ephemeral node still holds, the **new** VM registers
+as `<name>-1`. Because the join path holds no device-delete authority, it does
+not clean up the old node.
 
-The old `ts-bootstrap` deleted existing Tailscale devices with the same hostname
-before joining. That avoided MagicDNS `-1` suffixes after quick VM rebuilds, but
-it also required every new VM to have device-list and device-delete authority
-through the Tailscale API proxy.
-
-The image no longer does that. The VM-side join path should not depend on
-device-delete authority. If a hostname is reused before Tailscale removes the old
-ephemeral node, clean up the stale node from an admin workstation or a dedicated
-broker service, not from the newly created VM.
+If a reused hostname collides, delete the stale node from a trusted admin context
+(the Tailscale admin console, or the API from a workstation holding the real
+credential) — not from the freshly created VM. Or just wait: ephemeral nodes are
+reaped after they disconnect, and the next rebuild gets the clean name.
 
 ## Operational notes
 
-- Disable autojoin for an image-derived VM by creating
-  `/etc/iv-image/disable-tailscale-join`.
-- Override the Tailscale API proxy with `IV_TAILSCALE_API_URL`.
-- Override the tag with `IV_TAILSCALE_TAG`.
-- Override the hostname with `IV_TAILSCALE_HOSTNAME`.
+- A VM that is never joined simply stays reachable over `ssh <vm>.exe.xyz`.
+- Override the proxy URL, tag, or hostname by editing the join command
+  (`tailscale-api.int.exe.xyz`, `tag:dev`, `$(hostname)`).
 - If the `tailscale-api` integration is backed by a Tailscale API access token,
-  that token still has Tailscale's normal API-token expiry and must be rotated in
-  exe.dev before it expires.
+  that token has the normal API-token expiry and must be rotated in exe.dev
+  before it expires.

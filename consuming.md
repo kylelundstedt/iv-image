@@ -5,23 +5,29 @@ title: "Consuming"
 ## Creating a VM from iv-image
 
 ```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.8 --name=<vm> --tag=iv
+ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:2 --name=<vm> --tag=iv
 ```
 
 Pin to an exact build or digest for reproducibility:
 
 ```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:1.8.0 ...
+ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:2.0.0 ...
 ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image@sha256:... ...
 ```
 
 The image is consumed only at VM creation — there is no default-image setting,
 so pass `--image` on every `new`.
 
-The `iv` tag should attach the existing `tailscale-api` integration. Without
-that integration, the VM still boots, but `iv-tailscale-join.service` will keep
-retrying until it can mint a one-use Tailscale auth key through
-`tailscale-api.int.exe.xyz`.
+## Joining the tailnet (on demand)
+
+The image does **not** auto-join the tailnet. A fresh VM is reachable only over
+the exe.dev edge (`ssh <vm>.exe.xyz`). To put it on IV's tailnet, run the
+`join-tailnet` agent skill (or the equivalent commands by hand) — it SSHes in
+over `*.exe.xyz` and runs `tailscale up` with a one-use key minted through the
+`tailscale-api` proxy. After it joins, use `ssh <vm>` (Tailscale) for the rest.
+
+Pass `--tag=iv` at creation so the `tailscale-api` integration is attached;
+the join step needs it to mint the key. See `tailnet.md` for the full flow.
 
 ## Provisioning a doc site
 

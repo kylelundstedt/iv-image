@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-# Compatibility entry point for older /exe.dev/setup defaults.
-set -euo pipefail
-
-if [ "$(id -u)" -eq 0 ]; then
-  exec /usr/local/bin/iv-tailscale-join "$@"
-fi
-
-exec sudo /usr/local/bin/iv-tailscale-join "$@"
