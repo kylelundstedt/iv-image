@@ -65,3 +65,5 @@ to our layer. Don't mirror the upstream number into the image number.
 | `1.7.0` | fix stale-node race and retry auth-key POST | `d20aa680543e` |
 | `1.8.0` | replace setup-script bootstrap with image-owned `iv-tailscale-join.service` | `d20aa680543e` |
 | `2.0.0` | **remove baked auto-join** (`ts-bootstrap`/`iv-tailscale-join`/service); `tailscaled` enabled but idle, VMs join on demand via the `join-tailnet` skill (breaking) | `d20aa680543e` |
+| `2.1.0` | + baked team agent config (AGENTS.md, settings, MCP) + pre-installed team skills (fnm + node) | `d20aa680543e` |
+| `2.2.0` | + cloud/object-storage CLIs: `aws`, `tigris`, `rclone` baked; Azure CLI + gcloud SDK on demand via `install-cloud-cli` | `d20aa680543e` |

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# install-cloud-cli <azure|gcloud>... — install heavy cloud CLIs on demand.
+#
+# Azure CLI and the Google Cloud SDK are NOT baked into iv-image: together they
+# add ~2 GB of Python-bundled deps, which every fresh-VM provision would pull.
+# Most VMs never touch Azure or GCP, so they install per-VM, on demand, here.
+# (aws, tigris, rclone ARE baked — they're small. See Dockerfile.iv.)
+#
+# Idempotent: re-running a target that's already present is a no-op.
+# Arch-aware (x86_64 + aarch64). Installs system-wide via sudo (NOPASSWD on VMs).
+set -euo pipefail
+
+[ $# -gt 0 ] || { echo "usage: install-cloud-cli <azure|gcloud> [...]" >&2; exit 1; }
+
+install_azure() {
+	if command -v az >/dev/null 2>&1; then
+		echo "azure-cli already installed: $(az version --query '\"azure-cli\"' -o tsv 2>/dev/null || echo present)"
+		return
+	fi
+	# Microsoft's official deb installer — detects arch internally.
+	curl -fsSL https://aka.ms/InstallAzureCLIDeb | sudo bash
+	sudo rm -rf /var/lib/apt/lists/*
+	az version
+}
+
+install_gcloud() {
+	if command -v gcloud >/dev/null 2>&1; then
+		echo "gcloud already installed: $(gcloud --version | head -1)"
+		return
+	fi
+	# Self-contained SDK tarball into /opt. uname -m emits x86_64/aarch64;
+	# gcloud's 64-bit ARM asset is named "arm".
+	local arch
+	arch=$(uname -m | sed 's/aarch64/arm/')
+	curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${arch}.tar.gz" -o /tmp/gcloud.tar.gz
+	sudo tar -xzf /tmp/gcloud.tar.gz -C /opt
+	rm /tmp/gcloud.tar.gz
+	sudo /opt/google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false
+	sudo ln -sf /opt/google-cloud-sdk/bin/gcloud /usr/local/bin/gcloud
+	sudo ln -sf /opt/google-cloud-sdk/bin/gsutil /usr/local/bin/gsutil
+	sudo ln -sf /opt/google-cloud-sdk/bin/bq /usr/local/bin/bq
+	gcloud --version
+}
+
+for target in "$@"; do
+	case "$target" in
+		azure | az) install_azure ;;
+		gcloud | gcp | google) install_gcloud ;;
+		*) echo "unknown target: $target (expected: azure, gcloud)" >&2; exit 1 ;;
+	esac
+done

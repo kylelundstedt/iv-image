@@ -19,11 +19,41 @@ RUN curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v${QUA
  && rm /tmp/quarto.tar.gz \
  && /usr/local/bin/quarto --version
 
+# Cloud / object-storage CLIs. All arch-aware (x86_64 + aarch64).
+# Small + broadly useful → baked here. Azure CLI + gcloud SDK are ~2 GB of
+# Python deps and rarely needed, so they install on demand via the baked
+# `install-cloud-cli` helper (bin/install-cloud-cli) instead.
+#
+# AWS CLI v2 — official bundled installer (self-contained, no system python dep).
+# uname -m emits x86_64/aarch64, which match the published asset names directly.
+RUN ARCH=$(uname -m) \
+ && curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH}.zip" -o /tmp/awscliv2.zip \
+ && unzip -q /tmp/awscliv2.zip -d /tmp \
+ && /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli \
+ && rm -rf /tmp/awscliv2.zip /tmp/aws \
+ && aws --version
+
+# Tigris CLI (Fly.io object storage, S3-compatible) — upstream installer, pinned
+# into /usr/local/bin. Standalone binary, no node/npm dependency.
+RUN curl -fsSL https://github.com/tigrisdata/cli/releases/latest/download/install.sh \
+      | env TIGRIS_INSTALL_DIR=/usr/local/bin TIGRIS_SKIP_PATH=1 sh \
+ && test -x /usr/local/bin/tigris
+
+# rclone — universal object-storage mover (S3/R2/GCS/Azure/Tigris). Single binary.
+# dpkg --print-architecture emits amd64/arm64, matching the rclone asset names.
+RUN ARCH=$(dpkg --print-architecture) \
+ && curl -fsSL "https://downloads.rclone.org/rclone-current-linux-${ARCH}.zip" -o /tmp/rclone.zip \
+ && unzip -q /tmp/rclone.zip -d /tmp \
+ && mv /tmp/rclone-*-linux-${ARCH}/rclone /usr/local/bin/rclone \
+ && chmod +x /usr/local/bin/rclone \
+ && rm -rf /tmp/rclone.zip /tmp/rclone-*-linux-${ARCH} \
+ && rclone version
+
 # Doc-site render+serve tooling — every repo-VM renders its repo to :8000.
 # gen-llms-txt is the agent-twin half: a Quarto post-render hook that emits
 # .md twins + llms.txt + llms-full.txt next to the rendered HTML.
-COPY bin/render-site bin/provision-docsite bin/gen-llms-txt /usr/local/bin/
-RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/local/bin/gen-llms-txt
+COPY bin/render-site bin/provision-docsite bin/gen-llms-txt bin/install-cloud-cli /usr/local/bin/
+RUN chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/local/bin/gen-llms-txt /usr/local/bin/install-cloud-cli
 
 # exe.dev BYO-image gotcha: tailscaled.service ships disabled. Enable it so the
 # daemon is running and idle on boot. The image does NOT auto-join the tailnet:
