@@ -1,0 +1,15 @@
+# Codex default model + provider for iv-image VMs.
+#
+# exe.dev's LLM integration exposes the org's configured provider
+# (e.g. a ChatGPT Business subscription) behind an OpenAI-compatible
+# endpoint at llm.int.exe.xyz. The VM's network identity authenticates
+# to the int.exe.xyz proxy, so no API key is configured here.
+#
+# This makes plain `codex` route to exe-llm. To use a different
+# provider/model ad hoc, override with `-c model_provider=...`.
+model = "gpt-5.5"
+model_provider = "exe-llm"
+
+[model_providers.exe-llm]
+name = "exe-llm"
+base_url = "https://llm.int.exe.xyz/v1"

@@ -3,8 +3,10 @@
 ARG BASE=localhost:5000/exeuntu-base:d20aa680543e
 FROM ${BASE}
 
-# DuckDB CLI (pinned)
-RUN curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-amd64.zip -o /tmp/duckdb.zip \
+# DuckDB CLI (pinned). dpkg --print-architecture emits amd64/arm64, matching
+# the published asset names — derived so this layer builds on both arches.
+RUN ARCH=$(dpkg --print-architecture) \
+ && curl -fsSL "https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_cli-linux-${ARCH}.zip" -o /tmp/duckdb.zip \
  && unzip -o /tmp/duckdb.zip -d /usr/local/bin \
  && rm /tmp/duckdb.zip \
  && /usr/local/bin/duckdb --version
@@ -12,7 +14,8 @@ RUN curl -fsSL https://github.com/duckdb/duckdb/releases/download/v1.5.3/duckdb_
 # Quarto CLI (pinned) — renders each doc-site repo to its VM HTTP endpoint.
 # Tarball bundles pandoc + deno; plain markdown render needs no R/Python.
 ARG QUARTO_VERSION=1.9.38
-RUN curl -fsSL https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-amd64.tar.gz -o /tmp/quarto.tar.gz \
+RUN ARCH=$(dpkg --print-architecture) \
+ && curl -fsSL "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${ARCH}.tar.gz" -o /tmp/quarto.tar.gz \
  && mkdir -p /opt/quarto \
  && tar -xzf /tmp/quarto.tar.gz -C /opt/quarto --strip-components=1 \
  && ln -sf /opt/quarto/bin/quarto /usr/local/bin/quarto \
@@ -65,6 +68,7 @@ RUN systemctl enable tailscaled
 
 # --- Agent configuration (team defaults) ---
 # AGENTS.md: team-wide instructions for Claude Code and Codex.
+# codex-config.toml: defaults Codex to exe.dev's LLM integration (exe-llm).
 # settings.json: SSH guard hook (blocks parallel SSH to exe.dev) + env.
 # MCP servers: exe.dev proxy endpoints (motherduck, github-work).
 # Skills: pre-installed so VMs start ready — no npm install on first launch.
@@ -72,6 +76,7 @@ RUN systemctl enable tailscaled
 # Personal dotfiles layer on top: a user's install.sh can overlay AGENTS.md,
 # add personal MCP servers, and install additional skills.
 COPY agent/AGENTS.md /home/exedev/.agents/AGENTS.md
+COPY agent/codex-config.toml /home/exedev/.codex/config.toml
 COPY agent/settings.json /home/exedev/.claude/settings.json
 RUN mkdir -p /home/exedev/.claude /home/exedev/.codex \
  && ln -sf ../.agents/AGENTS.md /home/exedev/.claude/CLAUDE.md \
