@@ -55,13 +55,31 @@ Personal dotfiles layer on top. Running your own `install.sh` will overlay
 `AGENTS.md`, add personal MCP servers (github-home, tigris, readwise), and
 install additional skills.
 
+## Cloning a repo (integration)
+
+The image bakes in no repo credentials. To pull a private repo onto a VM, attach
+a GitHub integration and clone over the exe.dev proxy — the credential stays in
+exe.dev's proxy layer and never lands on the VM.
+
+```bash
+# Attach the integration to the VM (or to the `iv` tag, once, for all iv VMs)
+ssh exe.dev integrations attach github-<owner>-<repo> <vm>
+
+# Clone over the proxy host: https://<integration>.int.exe.xyz/<org>/<repo>.git
+ssh <vm>.exe.xyz "git clone https://github-<owner>-<repo>.int.exe.xyz/<org>/<repo>.git ~/<repo>"
+```
+
+The `.int.exe.xyz` host is the VM-side proxy endpoint; exe.dev injects the real
+GitHub token at the proxy, so no PAT or SSH key is stored on the VM. The
+integration name and the `int.exe.xyz` subdomain match (e.g. integration
+`github-kylelundstedt-iv-image` → `github-kylelundstedt-iv-image.int.exe.xyz`).
+
 ## Provisioning a doc site
 
 Each repo-VM serves its rendered site on `:8000` (the exe.dev HTTPS proxy port).
-After cloning a repo:
+After cloning a repo (see above):
 
 ```bash
-ssh <vm>.exe.xyz "git clone https://<integration>.int.exe.xyz/<org>/<repo>.git ~/<repo>"
 ssh <vm>.exe.xyz "provision-docsite ~/<repo>"
 ```
 
