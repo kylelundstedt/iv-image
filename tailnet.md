@@ -51,7 +51,7 @@ mint the key. Attach it via the `iv` tag and create VMs with that tag:
 
 ```bash
 ssh exe.dev integrations attach tailscale-api tag:iv
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:2 --name=<vm> --tag=iv
+ssh exe.dev new --name=<vm> --tag=iv
 ```
 
 The integration must proxy to the Tailscale API base URL `https://api.tailscale.com`;

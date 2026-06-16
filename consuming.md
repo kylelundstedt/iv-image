@@ -2,21 +2,29 @@
 title: "Consuming"
 ---
 
-## Creating a VM from iv-image
+## Creating a VM
+
+VMs are created from stock `boldsoftware/exeuntu` (the default — no `--image`
+flag), then provisioned by running `provision-iv.sh` from this repo at a pinned
+tag/sha:
 
 ```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:2 --name=<vm> --tag=iv
+# 1. Create a VM from stock exeuntu (default image — NO --image flag)
+ssh exe.dev new --name=<vm> --tag=iv
+
+# 2. Attach the repo integration so the VM can clone this repo
+ssh exe.dev integrations attach github-kylelundstedt-iv-image vm:<vm>
+
+# 3. Clone at a pinned tag/sha and provision
+ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/kylelundstedt/iv-image.git ~/iv-image \
+  && git -C ~/iv-image checkout <tag-or-sha> && ~/iv-image/provision-iv.sh"
 ```
 
-Pin to an exact build or digest for reproducibility:
-
-```bash
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image:2.0.0 ...
-ssh exe.dev new --image=iv-registry.exe.xyz:5000/iv-image@sha256:... ...
-```
-
-The image is consumed only at VM creation — there is no default-image setting,
-so pass `--image` on every `new`.
+For reproducibility, pin by checking out a git tag/sha of this repo before
+running `provision-iv.sh` — tool versions are pinned inside the script and the
+team skills are vendored (frozen) in the repo. Per-VM provenance is recorded in
+`~/iv-provision.lock` (exeuntu image revision, shelley version, DuckDB/Quarto
+versions, skills count, and the provision repo git sha).
 
 ## Joining the tailnet (on demand)
 
@@ -29,17 +37,17 @@ over `*.exe.xyz` and runs `tailscale up` with a one-use key minted through the
 Pass `--tag=iv` at creation so the `tailscale-api` integration is attached;
 the join step needs it to mint the key. See `tailnet.md` for the full flow.
 
-## Upgrading to a new image
+## Upgrading to a new revision
 
-exe.dev applies an image only at creation, so upgrading a VM to a newer
-`iv-image` means destroy + recreate under the same name. The `upgrade-vm` agent
-skill does this without a `-1` tailnet name: from a control node it deletes the
-stale tailnet node, recreates from the target image, and rejoins. It **wipes the
-VM's local disk** — reprovision, not migrate. See `tailnet.md`.
+To move a VM to a newer provisioning recipe, destroy + recreate under the same
+name, then re-provision at the new tag/sha. The `upgrade-vm` agent skill does
+this without a `-1` tailnet name: from a control node it deletes the stale
+tailnet node, recreates the VM, and rejoins. It **wipes the VM's local disk** —
+reprovision, not migrate. See `tailnet.md`.
 
-## Agent config (baked in)
+## Agent config (installed by provision-iv.sh)
 
-Every iv-image VM ships with team agent defaults — no setup required:
+Every provisioned VM gets team agent defaults — no manual setup required:
 
 - **AGENTS.md** — team-wide instructions for Claude Code and Codex (data work
   conventions, exe.dev SSH discipline, skill usage rules)

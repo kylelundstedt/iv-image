@@ -2,55 +2,56 @@
 title: "iv-image"
 ---
 
-The IV custom OCI image for exe.dev VMs, plus the build/push pipeline for IV's
-private registry (`iv-registry.exe.xyz`).
+The IV provisioning layer for exe.dev VMs: a script (`provision-iv.sh`) plus
+vendored skills and doc-site tooling that turn a stock `boldsoftware/exeuntu`
+VM into an IV dev box.
 
-## Why this exists
+## Why a script, not a custom image
 
-- **Escape Bold's default.** exe.dev's stock image is `boldsoftware/exeuntu`,
-  which can change under us. We pin our own base commit.
-- **Preinstall + region.** Bake DuckDB in and control the base so VMs come up
-  identical and in the right region (LAX).
-- **Reproducible compute for GitLake.** Recorded executions pin the image by
-  digest — see the image-identity section of `iv/iv_platform.md` in the gitlake
-  repo (`kylelundstedt/gitlake`).
+- **Keep Shelley working.** A custom Docker image is not recognized by exe.dev
+  as "exeuntu", which silently disables Shelley (exe.dev's built-in coding
+  agent): no VMs-list icon, no detail-page Shelley button, and exe.dev never
+  injects the shelley binary at VM creation. Stock exeuntu keeps Shelley fully
+  working (icon, button, `https://<vm>.shelley.exe.xyz`).
+- **Preinstall.** Provisioning bakes in DuckDB, Quarto, doc-site tooling, agent
+  config, and team skills in one ~23-second pass onto stock exeuntu.
+- **Reproducible compute for GitLake.** The custom image's only real advantage
+  was reproducibility via pinned image digests; that is replaced by the
+  recipe-pinning model below (git tag/sha + pinned tools + vendored skills,
+  with the base exeuntu recorded in a lockfile).
 
 ## Layout
 
-| File            | Role                                                                   |
-| --------------- | ---------------------------------------------------------------------- |
-| `Dockerfile.iv` | The IV overlay: pinned exeuntu base + DuckDB + Quarto + doc-site tooling; `tailscaled` enabled but idle (on-demand tailnet join). |
-| `build.sh`      | Fetch pinned exeuntu, build base + overlay, tag, push, record digest.  |
-| `bin/`          | `render-site` + `provision-docsite` + `gen-llms-txt` — baked onto PATH in the image. |
+| File               | Role                                                                   |
+| ------------------ | ---------------------------------------------------------------------- |
+| `provision-iv.sh`  | Provisions the IV layer onto stock exeuntu (DuckDB + Quarto + agent config + skills); writes `~/iv-provision.lock`. |
+| `vendor-skills.sh` | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).   |
+| `skills/`          | Vendored, pinned team skills — committed to the repo so they are frozen. |
+| `bin/`             | `render-site` + `provision-docsite` + `gen-llms-txt` — installed onto PATH. |
 
-The base layer is built from upstream `boldsoftware/exeuntu` at a pinned commit
-(`build.sh` clones it into `exeuntu/`). We don't vendor exeuntu's Dockerfile.
+## Reproducibility (recipe pinning)
 
-## Versioning (SemVer)
+The pinned artifact is the git commit of this repo: check out a specific tag/sha
+on the VM, run `provision-iv.sh`, and you get the same result.
 
-The overlay is versioned `iv-image:MAJOR.MINOR.PATCH`. `build.sh` pushes the
-exact build plus floating `MAJOR.MINOR` and `MAJOR` aliases:
+- Tool versions are pinned inside `provision-iv.sh` (DuckDB 1.5.3, Quarto 1.9.38).
+- Skills are vendored into `skills/` (committed = frozen); `provision-iv.sh`
+  copies them in with no node/npx needed on the VM.
+- The base exeuntu image **cannot** be pinned — exe.dev manages it (floating)
+  and there is no version/digest selector on `ssh exe.dev new`. Pinning it to a
+  custom registry digest is exactly what breaks Shelley. Instead,
+  `provision-iv.sh` records it in `~/iv-provision.lock` (exeuntu image revision,
+  shelley version, DuckDB/Quarto versions, skills count, and the provision repo
+  git sha) as the per-VM provenance record.
 
-| Tag                 | Meaning                                 | Mutable?           |
-| ------------------- | --------------------------------------- | ------------------ |
-| `iv-image:1.1.0`    | the exact build — pin this for a recipe | no (by convention) |
-| `iv-image:1.1`      | latest `1.1.x`                          | yes                |
-| `iv-image:1`        | latest `1.x`                            | yes                |
-| `iv-image@sha256:…` | true immutable pin (worker VMs / ER)    | never              |
+## Versioning
 
-Bump rules:
+Versioning is now via **git tags of this provisioning repo**, not
+`iv-image:MAJOR.MINOR.PATCH` Docker image tags. Pin a recipe by checking out a
+tag/sha before running `provision-iv.sh`. The table below is the historical
+record from the retired custom-image era.
 
-- **MAJOR** — re-pin the exeuntu base to a new commit, Ubuntu bump, or remove
-  tooling (breaking).
-- **MINOR** — additive overlay change: bump DuckDB, bake in a tool or
-  `install.sh`, enable a service.
-- **PATCH** — bug fix to our overlay (e.g. fixing a baked-in script).
-
-Note: an upstream component's own patch (DuckDB 1.5.3 → 1.5.4) is an image
-**MINOR** — from the image's contract it's an additive content change, not a fix
-to our layer. Don't mirror the upstream number into the image number.
-
-### History
+### History (custom-image era, retired)
 
 | Version | Change                                          | exeuntu commit |
 | ------- | ----------------------------------------------- | -------------- |

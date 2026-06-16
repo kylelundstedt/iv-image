@@ -1,35 +1,35 @@
 ---
-title: "Building"
+title: "Maintaining"
 ---
 
-## Cutting a new version
+There is no image build anymore. VMs run stock `boldsoftware/exeuntu` and get
+the IV layer from `provision-iv.sh` at a pinned git tag/sha. To change what VMs
+receive, edit the provisioning script and/or the vendored skills, then commit
+and tag.
+
+## Changing tool versions
+
+Tool versions are pinned inside `provision-iv.sh` (`DUCKDB_VERSION`,
+`QUARTO_VERSION`). Edit the pins, commit, and tag a new revision. Newly
+provisioned VMs pick up the change when they check out the new tag.
 
 ```bash
-# On iv-registry (or any amd64 builder with Docker):
 cd ~/iv-image
-$EDITOR build.sh        # bump IV_VERSION; edit Dockerfile.iv as needed
-./build.sh              # builds + pushes to localhost:5000
+$EDITOR provision-iv.sh        # bump DUCKDB_VERSION / QUARTO_VERSION, etc.
+# commit + tag
 ```
 
-To build elsewhere and push to the registry over TLS:
+## Refreshing the vendored skills
+
+Team skills are vendored into `skills/` (committed to the repo so they are
+frozen — `provision-iv.sh` copies them in with no node/npx on the VM). To
+refresh the snapshot, run `vendor-skills.sh` on any machine with node, then
+commit the result.
 
 ```bash
-REG=iv-registry.exe.xyz:5000 ./build.sh
+./vendor-skills.sh             # refreshes skills/ — needs node/npx
+# review the diff, commit, tag
 ```
 
-## Gotchas
-
-- **`docker build --network=host` is mandatory.** Docker's embedded DNS fails to
-  resolve `pkgs.tailscale.com` on exe.dev VMs (curl exit 6) even though the host
-  resolves fine. `build.sh` already passes it.
-- **Build on amd64**, not an arm Mac — exe.dev VMs are amd64.
-- **tailscaled ships disabled on BYO images.** exe.dev only enables it on its own
-  default image; apt's postinst `systemctl enable` no-ops at build time (no PID
-  1). We explicitly `systemctl enable tailscaled` in `Dockerfile.iv` so the
-  daemon is up and idle — but the image does **not** join the tailnet at boot.
-- **No baked auto-join.** As of 2.0.0 the image carries no `ts-bootstrap`,
-  `iv-tailscale-join`, setup-script hook, or Tailscale API access. A VM joins on
-  demand via the `join-tailnet` agent skill (`tailnet.md`), which SSHes in over
-  `*.exe.xyz` and runs `tailscale up`, minting a one-use key through the
-  `tailscale-api` proxy. The skill still needs that integration attached to the
-  VM (via `--tag=iv`); the Tailscale API secret stays in exe.dev's proxy layer.
+`vendor-skills.sh` installs into a throwaway `HOME` and requires `node`/`npx`;
+it is the only maintenance step that needs node.

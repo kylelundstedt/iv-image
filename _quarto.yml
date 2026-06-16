@@ -8,8 +8,10 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - href: bootstrap.md
+        text: Bootstrap
       - href: building.md
-        text: Building
+        text: Maintaining
       - href: consuming.md
         text: Consuming
       - href: tailnet.md
