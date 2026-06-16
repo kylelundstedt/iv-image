@@ -89,6 +89,27 @@ for d in "$IV_REPO"/skills/*/; do
   ln -sf "../../.agents/skills/$name" "$HOME/.codex/skills/$name"
 done
 
+echo "== ssh config (VM-to-VM short names) =="
+# Stock exeuntu ships no ~/.ssh/config, so the first VM-to-VM SSH by short name
+# (e.g. `ssh iv-docs`) fails host-key verification: the default
+# StrictHostKeyChecking can't accept the new key in a non-interactive/BatchMode
+# session. This stanza makes `ssh iv-gitlake` Just Work across the tailnet —
+# accept host keys on first contact, default the login user to exedev. Idempotent
+# (guarded by the marker), so re-provisioning won't duplicate it.
+mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
+SSH_CFG="$HOME/.ssh/config"; touch "$SSH_CFG"; chmod 600 "$SSH_CFG"
+if ! grep -q "# >>> iv-provision ssh >>>" "$SSH_CFG"; then
+  cat >> "$SSH_CFG" <<'EOF'
+
+# >>> iv-provision ssh >>>
+# VM-to-VM tailnet SSH: accept new host keys, default user exedev.
+Host iv-* *.ts.net
+  StrictHostKeyChecking accept-new
+  User exedev
+# <<< iv-provision ssh <<<
+EOF
+fi
+
 echo "== provenance lockfile =="
 # Records exactly what landed. The base exeuntu is exe.dev-managed (floats); we can't
 # pin it, but we record its image revision + the Shelley version exe.dev injected.
