@@ -123,6 +123,7 @@ LOCK="$HOME/iv-provision.lock"
   echo "shelley_version=$(cat /exe.dev/etc/shelley-version 2>/dev/null || echo unknown)"
   echo "duckdb_version=$DUCKDB_VERSION"
   echo "quarto_version=$QUARTO_VERSION"
+  echo "dotfiles_manifest_pin=$(tr -d '[:space:]' < "$IV_REPO/dotfiles-manifest.pin" 2>/dev/null || echo unknown)"
   echo "skills_count=$(find "$IV_REPO"/skills -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')"
 } | tee "$LOCK"
 
