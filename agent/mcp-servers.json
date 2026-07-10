@@ -1,0 +1,10 @@
+{
+  "motherduck": {
+    "type": "http",
+    "url": "https://motherduck-mcp.int.exe.xyz/mcp"
+  },
+  "github-work": {
+    "type": "http",
+    "url": "https://github-mcp-work.int.exe.xyz/mcp/"
+  }
+}
