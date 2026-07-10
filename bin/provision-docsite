@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# provision-docsite <repo-checkout> — render a doc-site repo and serve its
-# _site on the VM's :8000 exe.dev proxy endpoint as a persistent user service.
+# provision-docsite <repo-checkout> — render a doc-site repo and serve its _site
+# on the VM's :8000 exe.dev proxy endpoint with nginx (gzip + cache headers).
 #
 # One repo per VM. Idempotent: re-run to re-render + re-point. To refresh the
 # live site after edits, just `render-site <repo>` again — no restart needed
-# (the http.server serves whatever is in <repo>/_site).
+# (nginx serves whatever is in <repo>/_site).
+#
+# Uses the nginx already in the exeuntu base image (installed, disabled by
+# default). gzip cuts a typical Quarto page's payload ~80%+ (uncompressed
+# Bootstrap CSS/JS is heavy), with immutable cache headers on the hashed
+# site_libs/ assets. Node-free.
 #
 # This is the ungoverned-simple publish; the governed render->gate->promote
 # loop is iv/infra/render-promote.md.
@@ -12,34 +17,50 @@ set -euo pipefail
 
 REPO="${1:?usage: provision-docsite <repo-checkout>}"
 REPO="$(cd "$REPO" && pwd)"
+DOCROOT="$REPO/_site"
 
 render-site "$REPO"
 
-# user services must run without an active login session
-loginctl enable-linger "$USER" >/dev/null 2>&1 || true
-
-# D-Bus user session is not available over non-interactive SSH; set the
-# runtime dir explicitly so systemctl --user can find its bus socket.
+# Retire any prior python-based docsite user service (would fight nginx for :8000).
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+systemctl --user disable --now docsite.service >/dev/null 2>&1 || true
 
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/docsite.service" <<EOF
-[Unit]
-Description=Doc site — static _site over http on the exe.dev proxy port (:8000)
-After=network-online.target
+# nginx workers must read _site under the invoking user's home (mode 750), so run
+# them as that user rather than www-data.
+sudo sed -i "s/^user .*/user ${USER};/" /etc/nginx/nginx.conf
 
-[Service]
-Type=simple
-WorkingDirectory=$REPO/_site
-# :8000 is the iv-image exe.dev proxy default (verify: ssh exe.dev share show <vm>).
-ExecStart=/usr/bin/python3 -m http.server 8000 --bind 0.0.0.0
-Restart=always
-RestartSec=2
+sudo tee /etc/nginx/sites-available/docsite >/dev/null <<NGINX
+server {
+    listen 8000 default_server;
+    listen [::]:8000 default_server;
+    server_name _;
 
-[Install]
-WantedBy=default.target
-EOF
+    root ${DOCROOT};
+    index index.html;
 
-systemctl --user daemon-reload
-systemctl --user enable --now docsite.service
-echo "docsite live on :8000 -> $REPO/_site"
+    gzip on;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_types text/plain text/css application/javascript text/javascript
+               application/json image/svg+xml application/xml text/xml
+               application/rss+xml application/atom+xml font/ttf;
+
+    # Hashed build assets are immutable -> cache hard; content assets -> a while.
+    location /site_libs/ { expires 1y;  add_header Cache-Control "public, immutable"; }
+    location /assets/    { expires 30d; add_header Cache-Control "public"; }
+
+    # Clean URLs + directory index (Quarto emits <page>/index.html).
+    location / {
+        try_files \$uri \$uri/ \$uri/index.html =404;
+    }
+}
+NGINX
+
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo ln -sf /etc/nginx/sites-available/docsite /etc/nginx/sites-enabled/docsite
+sudo nginx -t
+sudo systemctl enable --now nginx
+sudo systemctl reload nginx
+echo "docsite live on :8000 (nginx, gzip) -> ${DOCROOT}"

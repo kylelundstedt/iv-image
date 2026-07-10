@@ -91,6 +91,7 @@ After cloning a repo (see above):
 ssh <vm>.exe.xyz "provision-docsite ~/<repo>"
 ```
 
-`provision-docsite` renders the Quarto project and starts a persistent systemd
-user service serving `_site` on `:8000`. To re-render after edits, run
-`render-site ~/<repo>` — no restart needed.
+`provision-docsite` renders the Quarto project and serves `_site` on `:8000` with
+**nginx** (gzip + immutable cache headers on the hashed `site_libs/` assets — a
+typical Quarto page's payload drops ~80%+). To re-render after edits, run
+`render-site ~/<repo>` — no restart needed (nginx serves whatever is in `_site`).
