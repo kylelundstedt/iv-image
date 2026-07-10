@@ -51,3 +51,15 @@ provisioner pulls `--image` only from a `*.exe.xyz`-proxied registry).
 
 - IV 2.3.0 is uncommitted: arch-aware DuckDB/Quarto edits in `Dockerfile.iv`, `IV_VERSION`
   bump, new `agent/codex-config.toml`. Commit + `build.sh` + push when ready.
+
+## Doc-site tooling
+
+- `provision-docsite` serves `_site` with `python3 -m http.server` (single-threaded,
+  minimal), but the exeuntu base already ships **nginx** (installed, disabled). Consider
+  having `provision-docsite` enable nginx pointed at the docroot instead — a more robust
+  static server (concurrency, gzip, cache headers, real access logs) for free. Would also
+  enable log-based analytics (e.g. GoAccess) without a client-side beacon.
+- Consider separating build dir from served docroot (render to `_site`, publish by syncing
+  to a dedicated docroot) so `quarto preview` can run without touching the live site. This
+  is the "governed" render→promote pattern; the current tool serves the working-tree `_site`
+  directly, which couples preview to production.

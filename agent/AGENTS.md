@@ -24,6 +24,12 @@ dotfiles.
 - Baked in and ready: `aws` (AWS CLI v2), `tigris` (Tigris/Fly object storage), `rclone` (universal S3/R2/GCS/Azure mover).
 - On demand: Azure CLI and the Google Cloud SDK are not baked in (too large). When a task needs them, install with `install-cloud-cli azure` or `install-cloud-cli gcloud` (idempotent, system-wide). gcloud also provides `gsutil` and `bq`.
 
+## Screenshots (visual QA)
+
+- Don't judge visual rendering (layout, overflow, spacing, alignment) from CSS/HTML — screenshot the page and look.
+- `shot <url> <out.png> [width height]` renders a page with the headless Chromium already in the image (`/headless-shell`), node-free. View the PNG.
+- Point it at a running doc-site (`http://localhost:8000/<page>`), a `quarto preview` (`http://localhost:4321/<page>`), or any public URL.
+
 ## TODO
 
 - At the start of a session, check for `TODO.md` in the project root. If it exists, read it to understand outstanding work.

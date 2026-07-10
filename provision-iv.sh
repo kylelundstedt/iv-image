@@ -65,9 +65,11 @@ if ! command -v rclone >/dev/null; then
   rm -rf /tmp/rclone.zip /tmp/rclone-*-linux-${DPKG_ARCH}
 fi
 
-echo "== doc-site tools + install-cloud-cli helper =="
-sudo cp "$IV_REPO"/bin/render-site "$IV_REPO"/bin/provision-docsite "$IV_REPO"/bin/gen-llms-txt "$IV_REPO"/bin/install-cloud-cli /usr/local/bin/
-sudo chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/local/bin/gen-llms-txt /usr/local/bin/install-cloud-cli
+echo "== doc-site tools + shot + install-cloud-cli helper =="
+# shot: node-free screenshot via the headless Chromium already in exeuntu
+# (/headless-shell), driven over CDP with Python stdlib — for agent visual QA.
+sudo cp "$IV_REPO"/bin/render-site "$IV_REPO"/bin/provision-docsite "$IV_REPO"/bin/gen-llms-txt "$IV_REPO"/bin/shot "$IV_REPO"/bin/install-cloud-cli /usr/local/bin/
+sudo chmod +x /usr/local/bin/render-site /usr/local/bin/provision-docsite /usr/local/bin/gen-llms-txt /usr/local/bin/shot /usr/local/bin/install-cloud-cli
 
 echo "== agent config =="
 mkdir -p "$HOME/.agents" "$HOME/.claude" "$HOME/.codex"
