@@ -71,4 +71,15 @@ manifest_rows "$MCP_MANIFEST" \
   | jq -Rn 'reduce (inputs | split("\t")) as $r ({}; . + {($r[0]): {type: "http", url: $r[1]}})' \
   > "$SERVERS_OUT"
 
-echo "vendored $(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills + $(jq 'length' "$SERVERS_OUT") MCP servers from dotfiles@${PIN:0:12} — commit to pin"
+# --- agents: splice the shared AGENTS.md block (dotfiles agents-shared.md) ---
+# The block between the shared markers in agent/AGENTS.md is replaced with the
+# pinned file verbatim; team-specific sections outside the markers are kept.
+# ENVIRON (not awk -v) so backslashes in the content can't be mangled.
+AGENTS_SHARED="$(curl -fsSL "$RAW/agents-shared.md")" \
+awk '
+  /^<!-- >>> shared/ {print; print ENVIRON["AGENTS_SHARED"]; skip=1; next}
+  /^<!-- <<< shared/ {skip=0}
+  !skip
+' agent/AGENTS.md > agent/AGENTS.md.tmp && mv agent/AGENTS.md.tmp agent/AGENTS.md
+
+echo "vendored $(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills + $(jq 'length' "$SERVERS_OUT") MCP servers + shared AGENTS block from dotfiles@${PIN:0:12} — commit to pin"
