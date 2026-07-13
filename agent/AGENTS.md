@@ -4,10 +4,23 @@ Team-wide defaults for AI agents on iv-image VMs. Personal dotfiles layer on
 top — anything here can be overridden by `~/.agents/AGENTS.md` from your own
 dotfiles.
 
+The block between the `shared` markers is vendored from the dotfiles repo
+(`provisioning/agents-shared.md` at the commit in `../dotfiles-manifest.pin`)
+by `vendor-skills.sh` — edit it THERE and re-vendor; don't hand-edit here.
+Team-specific sections live outside the markers.
+
+<!-- >>> shared: dotfiles provisioning/agents-shared.md >>> -->
+<!-- Canonical shared agent-instruction sections (Core decision 1 + plan item
+U6): the single source for the sections that appear in BOTH the IV team
+AGENTS.md (iv-image, vendored at the pinned dotfiles commit) and the personal
+AGENTS.md (agents/.agents/AGENTS.md, embedded verbatim between shared
+markers). Edit HERE; diff-provisioning.sh flags any copy that drifts. -->
+
 ## Code
 
 - Verify before asserting — read the code, don't guess.
 - Prefer concrete findings with file and line references.
+- In reviews: prioritize correctness, regression risk, and missing tests.
 - Don't add features, abstractions, or cleanup beyond what was asked.
 - Formatters: Prettier for Markdown (`npx prettier --write "**/*.md"`), Ruff for Python (`uv run ruff format .`). Run before committing.
 
@@ -19,17 +32,6 @@ dotfiles.
 - Preferred Python libraries: polars (not pandas), dlt for ingestion, sqlmesh for transformations, duckdb for local analytics, marimo for notebooks, altair/seaborn for visualization.
 - Use node+npm for JavaScript environment management.
 
-## Cloud CLIs
-
-- Baked in and ready: `aws` (AWS CLI v2), `tigris` (Tigris/Fly object storage), `rclone` (universal S3/R2/GCS/Azure mover).
-- On demand: Azure CLI and the Google Cloud SDK are not baked in (too large). When a task needs them, install with `install-cloud-cli azure` or `install-cloud-cli gcloud` (idempotent, system-wide). gcloud also provides `gsutil` and `bq`.
-
-## Screenshots (visual QA)
-
-- Don't judge visual rendering (layout, overflow, spacing, alignment) from CSS/HTML — screenshot the page and look.
-- `shot <url> <out.png> [width height]` renders a page with the headless Chromium already in the image (`/headless-shell`), node-free. View the PNG.
-- Point it at a running doc-site (`http://localhost:8000/<page>`), a `quarto preview` (`http://localhost:4321/<page>`), or any public URL.
-
 ## TODO
 
 - At the start of a session, check for `TODO.md` in the project root. If it exists, read it to understand outstanding work.
@@ -40,10 +42,24 @@ dotfiles.
 
 - Global: `~/.agents/skills/<name>/SKILL.md`, symlinked into `~/.claude/skills/` and `~/.codex/skills/`.
 - Project-level: `.claude/skills/<name>/SKILL.md` in the repo root.
-- **Read skills before touching a platform.** Before writing code, running commands, or creating/managing VMs on any platform that has a skill, you MUST read the relevant SKILL.md file first. Do not proceed from memory — skills contain platform-specific gotchas that cause hours of debugging when ignored.
+- Each skill needs a `SKILL.md` with YAML frontmatter (`name`, `description`) and markdown instructions.
+- Put always-on rules in `AGENTS.md`. Put on-demand workflows and domain knowledge in skills.
+- **Read skills before touching a platform.** Before writing code, running commands, or creating/managing VMs on any platform that has a skill, you MUST read the relevant SKILL.md file first. Do not proceed from memory — skills contain platform-specific gotchas that cause hours of debugging when ignored. This applies to both code changes (e.g. editing provisioning scripts) and interactive work (e.g. creating a VM).
 
 ## exe.dev SSH
 
 - **Never launch parallel SSH attempts to `*.exe.xyz`.** One attempt at a time — wait for the result before retrying.
 - exe.dev silently drops TCP SYNs per source IP. Multiple concurrent attempts (including background retry loops) trigger a minutes-long lockout.
-- After creating a VM, wait ~20s, then try **one** SSH with `ConnectTimeout=30`. If it fails, wait 30-60s before **one** more attempt.
+- After creating a VM, wait ~20s, then try **one** SSH with `ConnectTimeout=30`. If it fails, wait 30–60s before **one** more attempt.
+<!-- <<< shared <<< -->
+
+## Cloud CLIs
+
+- Baked in and ready: `aws` (AWS CLI v2), `tigris` (Tigris/Fly object storage), `rclone` (universal S3/R2/GCS/Azure mover).
+- On demand: Azure CLI and the Google Cloud SDK are not baked in (too large). When a task needs them, install with `install-cloud-cli azure` or `install-cloud-cli gcloud` (idempotent, system-wide). gcloud also provides `gsutil` and `bq`.
+
+## Screenshots (visual QA)
+
+- Don't judge visual rendering (layout, overflow, spacing, alignment) from CSS/HTML — screenshot the page and look.
+- `shot <url> <out.png> [width height]` renders a page with the headless Chromium already in the image (`/headless-shell`), node-free. View the PNG.
+- Point it at a running doc-site (`http://localhost:8000/<page>`), a `quarto preview` (`http://localhost:4321/<page>`), or any public URL.
