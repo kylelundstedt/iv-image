@@ -33,8 +33,13 @@ By hand it is two commands on the VM:
 ```bash
 ssh -o ConnectTimeout=30 <vm>.exe.xyz 'bash -s' <<'REMOTE'
 set -euo pipefail
-KEY=$(curl -fsSL -X POST https://tailscale-api.int.exe.xyz/api/v2/tailnet/-/keys \
-  -H "Content-Type: application/json" \
+# Two-step (OAuth client behind the proxy, 2026-07): exchange for a 1h token
+# via the proxy, then mint against the public API (the proxy injects
+# Authorization on every request, so only the exchange goes through it).
+TOKEN=$(curl -fsSL -X POST -d "grant_type=client_credentials" \
+  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -r .access_token)
+KEY=$(curl -fsSL -X POST https://api.tailscale.com/api/v2/tailnet/-/keys \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
   | jq -r .key)
 sudo tailscale up --ssh --accept-dns --hostname="$(hostname)" --authkey="$KEY"
@@ -55,7 +60,9 @@ ssh exe.dev new --name=<vm> --tag=iv
 ```
 
 The integration must proxy to the Tailscale API base URL `https://api.tailscale.com`;
-the VM-side endpoint is `https://tailscale-api.int.exe.xyz/api/v2/tailnet/-/keys`.
+the VM-side endpoint that matters is `https://tailscale-api.int.exe.xyz/api/v2/oauth/token`
+(the only call that needs the injected credentials — everything after uses the
+returned 1h Bearer token against the public API).
 
 A direct HTTP proxy integration does not restrict which Tailscale API paths an
 attached VM can call — code on the VM can hit any endpoint the backing
