@@ -63,15 +63,21 @@ ssh -o ConnectTimeout=30 exe.dev rm <vm>
 
 Delete the old node before the replacement joins, otherwise the new VM gets a
 `-1` suffix. This workstation-specific path expects the 1Password CLI and the
-Industry Vault account. The authorization header is passed through curl config
-on stdin rather than exposed in curl's process arguments:
+Industry Vault account. Mint a short-lived (1h) access token from the Tailscale
+OAuth client — the old static API key is revoked (2026-07); see `tailnet.md`
+for the OAuth setup. Credentials are passed through curl config on stdin
+rather than exposed in curl's process arguments:
 
 ```bash
-TS_API_KEY=$(op read "op://Employee/Tailscale - API Key/credential" \
-  --account industryvault.1password.com)
+TS_TOKEN=$(printf 'user = "%s:%s"\n' \
+    "$(op read 'op://Employee/Tailscale OAuth Dev/Client ID' --account industryvault.1password.com)" \
+    "$(op read 'op://Employee/Tailscale OAuth Dev/Client secret' --account industryvault.1password.com)" \
+  | curl --config - -fsS -d grant_type=client_credentials \
+      https://api.tailscale.com/api/v2/oauth/token \
+  | jq -er .access_token)
 
 curl_with_tailscale_auth() {
-  printf 'header = "Authorization: Bearer %s"\n' "$TS_API_KEY" \
+  printf 'header = "Authorization: Bearer %s"\n' "$TS_TOKEN" \
     | curl --config - "$@"
 }
 
@@ -82,7 +88,7 @@ NODE_ID=$(curl_with_tailscale_auth -fsSL \
 
 curl_with_tailscale_auth -fsSL -X DELETE \
   "https://api.tailscale.com/api/v2/device/$NODE_ID"
-unset TS_API_KEY
+unset TS_TOKEN
 ```
 
 ### 4. Remove stale SSH state
