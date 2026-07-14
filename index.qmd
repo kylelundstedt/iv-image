@@ -55,6 +55,7 @@ tag/sha before running `provision-iv.sh`.
 
 | Version | Change |
 | ------- | ------ |
+| `2.5.1` | upgrade-vm skill: mint Tailscale API access from the OAuth client instead of the revoked static API key (doc-only). |
 | `2.5.0` | First hardened provisioning release: vendored skills, verified tool downloads, repairable version pins, safer SSH/Tailscale workflows, tests/CI, nginx doc serving, and Markdown/LLM doc artifacts. |
 
 ### History (custom-image era, retired)
