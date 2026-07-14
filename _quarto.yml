@@ -1,9 +1,19 @@
 project:
   type: website
   output-dir: _site
+  render:
+    - index.qmd
+    - bootstrap.md
+    - building.md
+    - consuming.md
+    - tailnet.md
+    - registry.md
+  post-render:
+    - bin/gen-llms-txt
 
 website:
   title: "iv-image"
+  description: "Provision the IV development layer onto stock exe.dev VMs."
   navbar:
     left:
       - href: index.qmd
@@ -18,3 +28,7 @@ website:
         text: Tailnet
       - href: registry.md
         text: Registry
+
+format:
+  html: default
+  gfm: default

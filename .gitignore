@@ -1,8 +1,11 @@
-# pinned exeuntu source is cloned at build time, not vendored
+# pinned exeuntu source from the retired image workflow is not vendored
 exeuntu/
-# build + digest output
+# generated/local output
 *.log
 
 /.quarto/
+/.ruff_cache/
+**/__pycache__/
+**/*.py[cod]
 **/*.quarto_ipynb
 /_site/

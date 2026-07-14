@@ -34,22 +34,28 @@ VM into an IV dev box.
 The pinned artifact is the git commit of this repo: check out a specific tag/sha
 on the VM, run `provision-iv.sh`, and you get the same result.
 
-- Tool versions are pinned inside `provision-iv.sh` (DuckDB 1.5.3, Quarto 1.9.38).
+- Tool release versions and per-architecture checksums are pinned inside
+  `provision-iv.sh`; re-running it repairs or upgrades mismatched versions.
 - Skills are vendored into `skills/` (committed = frozen); `provision-iv.sh`
   copies them in with no node/npx needed on the VM.
 - The base exeuntu image **cannot** be pinned — exe.dev manages it (floating)
   and there is no version/digest selector on `ssh exe.dev new`. Pinning it to a
   custom registry digest is exactly what breaks Shelley. Instead,
   `provision-iv.sh` records it in `~/iv-provision.lock` (exeuntu image revision,
-  shelley version, DuckDB/Quarto versions, skills count, and the provision repo
-  git sha) as the per-VM provenance record.
+  Shelley version, installed DuckDB/Quarto/AWS/Tigris/rclone versions, skills
+  count, manifest pin, and provisioning Git SHA).
 
 ## Versioning
 
-Versioning is now via **git tags of this provisioning repo**, not
+Versioning is via **Git tags of this provisioning repo**, not
 `iv-image:MAJOR.MINOR.PATCH` Docker image tags. Pin a recipe by checking out a
-tag/sha before running `provision-iv.sh`. The table below is the historical
-record from the retired custom-image era.
+tag/sha before running `provision-iv.sh`.
+
+### Provisioning-era releases
+
+| Version | Change |
+| ------- | ------ |
+| `2.5.0` | First hardened provisioning release: vendored skills, verified tool downloads, repairable version pins, safer SSH/Tailscale workflows, tests/CI, nginx doc serving, and Markdown/LLM doc artifacts. |
 
 ### History (custom-image era, retired)
 

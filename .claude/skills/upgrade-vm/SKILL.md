@@ -22,9 +22,11 @@ The user provides the **VM name** and optionally a **target tag/sha** of the
 **One SSH command at a time** — never parallel SSH to `*.exe.xyz` or `exe.dev`.
 
 ```bash
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/iv-image && git fetch --tags --quiet \
-  && git checkout <tag-or-sha-or-branch> && git pull --ff-only --quiet 2>/dev/null; \
-  ~/iv-image/provision-iv.sh"
+ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/iv-image \
+  && git fetch --tags --quiet \
+  && git checkout --detach <tag-or-sha> \
+  && ~/iv-image/provision-iv.sh \
+  && ~/iv-image/tests/smoke-provision.sh ~/iv-image"
 ```
 
 This re-pins tools and re-installs the vendored skills + agent config, and
@@ -47,25 +49,40 @@ Run sequentially. **One SSH command at a time.**
 
 This is destructive. Confirm the VM name and that wiping its disk is acceptable.
 
-### 2. Delete the stale Tailscale node
+### 2. Destroy the old VM
 
-The old VM's tailnet node must be deleted before the new one joins, otherwise the
-new VM gets a `-1` suffix. Use the Tailscale API from the Mac (which has the real
-API credential via 1Password):
-
-```bash
-TS_API_KEY=$(op read "op://Employee/Tailscale - API Key/credential" --account industryvault.1password.com)
-NODE_ID=$(curl -fsSL -H "Authorization: Bearer $TS_API_KEY" \
-  https://api.tailscale.com/api/v2/tailnet/-/devices \
-  | jq -r '.devices[] | select(.hostname == "<vm>") | .id')
-curl -fsSL -X DELETE -H "Authorization: Bearer $TS_API_KEY" \
-  "https://api.tailscale.com/api/v2/device/$NODE_ID"
-```
-
-### 3. Destroy the old VM
+Destroy the old VM before creating the replacement. The stale Tailscale node can
+still be located by hostname afterward, and must be deleted before the new VM
+joins.
 
 ```bash
 ssh -o ConnectTimeout=30 exe.dev rm <vm>
+```
+
+### 3. Delete the stale Tailscale node
+
+Delete the old node before the replacement joins, otherwise the new VM gets a
+`-1` suffix. This workstation-specific path expects the 1Password CLI and the
+Industry Vault account. The authorization header is passed through curl config
+on stdin rather than exposed in curl's process arguments:
+
+```bash
+TS_API_KEY=$(op read "op://Employee/Tailscale - API Key/credential" \
+  --account industryvault.1password.com)
+
+curl_with_tailscale_auth() {
+  printf 'header = "Authorization: Bearer %s"\n' "$TS_API_KEY" \
+    | curl --config - "$@"
+}
+
+NODE_ID=$(curl_with_tailscale_auth -fsSL \
+  https://api.tailscale.com/api/v2/tailnet/-/devices \
+  | jq -er --arg hostname "<vm>" \
+      '[.devices[] | select(.hostname == $hostname) | .id] | unique | if length == 1 then .[0] else error("expected exactly one matching node") end')
+
+curl_with_tailscale_auth -fsSL -X DELETE \
+  "https://api.tailscale.com/api/v2/device/$NODE_ID"
+unset TS_API_KEY
 ```
 
 ### 4. Remove stale SSH state
@@ -76,10 +93,13 @@ ssh -O exit <vm> 2>/dev/null || true
 ssh -O exit <vm>.exe.xyz 2>/dev/null || true
 ```
 
-### 5. Create the new VM (stock exeuntu — no --image)
+### 5. Create the new VM (stock exeuntu — no `--image`)
+
+Use the exe.dev VM tag `iv` so the required integrations are attached. This is
+not the provisioning repository release tag.
 
 ```bash
-ssh -o ConnectTimeout=30 exe.dev new --name=<vm> --tag=<tag>
+ssh -o ConnectTimeout=30 exe.dev new --name=<vm> --tag=iv
 ```
 
 If the user specified integrations, attach them:

@@ -4,10 +4,10 @@ title: "Tailnet Join"
 
 ## Contract
 
-`iv-image` VMs do **not** join the Tailscale tailnet automatically. The image
-ships `tailscaled` enabled but idle — no baked bootstrap script, no
-`/exe.dev/setup` hook, no Tailscale API access on the VM. A VM stays off the
-tailnet until something explicitly runs `tailscale up` on it.
+A stock exeuntu VM starts off the tailnet and `tailscaled` may be disabled. There
+is no baked bootstrap script and no automatic join. A VM stays off the tailnet
+until the `join-tailnet` workflow explicitly enables the daemon and runs
+`tailscale up`.
 
 This is deliberate. Auto-join-on-boot put every VM on the tailnet whether or not
 it belonged there, and the logic to do it had to live somewhere — a per-account
@@ -37,11 +37,17 @@ set -euo pipefail
 # via the proxy, then mint against the public API (the proxy injects
 # Authorization on every request, so only the exchange goes through it).
 TOKEN=$(curl -fsSL -X POST -d "grant_type=client_credentials" \
-  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -r .access_token)
-KEY=$(curl -fsSL -X POST https://api.tailscale.com/api/v2/tailnet/-/keys \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -er .access_token)
+trap 'rm -f "${auth_config:-}"; unset TOKEN KEY' EXIT
+auth_config=$(mktemp)
+chmod 600 "$auth_config"
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" > "$auth_config"
+KEY=$(curl --config "$auth_config" -fsSL -X POST \
+  https://api.tailscale.com/api/v2/tailnet/-/keys \
+  -H "Content-Type: application/json" \
   -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
-  | jq -r .key)
+  | jq -er .key)
+rm -f "$auth_config"
 sudo tailscale up --ssh --accept-dns --hostname="$(hostname)" --authkey="$KEY"
 tailscale status
 REMOTE
@@ -70,21 +76,19 @@ credential permits. The skill only mints an auth key, but if you need hard
 server-side enforcement of "create exactly one key for this VM," put a small
 broker in front instead of attaching the raw proxy.
 
-## Upgrading a VM to a new image
+## Upgrading a VM to a new revision
 
-exe.dev applies an image only at VM creation — there is no in-place upgrade. To
-move a VM to a newer `iv-image`, destroy and recreate it under the same name. The
-`upgrade-vm` agent skill does this from a control node:
+The normal upgrade is an in-place re-provision: check out a newer `iv-image`
+tag/sha in `~/iv-image` and run `provision-iv.sh` again. This updates the team
+software/configuration layer and rewrites `~/iv-provision.lock` without wiping
+the VM or changing its tailnet identity. The `upgrade-vm` skill documents this
+as Path A.
 
-1. destroy the old VM,
-2. delete its stale tailnet node (the control node holds the delete authority —
-   the VM does not),
-3. recreate from the target image,
-4. rejoin via `join-tailnet`.
-
-Because the stale node is deleted before the new one joins, the rebuilt VM keeps
-its clean name (no `-1`). It **wipes the VM's local disk** — this reprovisions,
-it does not migrate state.
+A full destroy/recreate is only needed for a fresh disk or an exe.dev-managed
+base change that re-provisioning cannot address. In that exceptional path,
+destroy the VM, delete the stale tailnet node from a trusted workstation,
+recreate stock exeuntu, rejoin, and re-provision. It **wipes the VM's local
+disk**.
 
 ## Security boundary
 
@@ -100,12 +104,11 @@ that an old, not-yet-reaped ephemeral node still holds, the **new** VM registers
 as `<name>-1`. Because the join path holds no device-delete authority, it does
 not clean up the old node.
 
-If a reused hostname collides, delete the stale node from a trusted admin context
-(the Tailscale admin console, or the API from a workstation holding the real
-credential) — not from the freshly created VM. Or just wait: ephemeral nodes are
-reaped after they disconnect, and the next rebuild gets the clean name. For the
-common case of reprovisioning onto a newer image, the `upgrade-vm` skill deletes
-the stale node before recreating — see "Upgrading a VM to a new image" above.
+For the common case, re-provisioning in place keeps the existing node and name.
+If a full rebuild with a reused hostname collides, delete the stale node from a
+trusted admin context (the Tailscale admin console, or the API from a workstation
+holding the real credential) — not from the freshly created VM. Or wait for the
+ephemeral node to be reaped. The `upgrade-vm` skill documents both paths.
 
 ## Operational notes
 

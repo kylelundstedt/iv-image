@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # install-cloud-cli <azure|gcloud>... — install heavy cloud CLIs on demand.
 #
-# Azure CLI and the Google Cloud SDK are NOT baked into iv-image: together they
-# add ~2 GB of Python-bundled deps, which every fresh-VM provision would pull.
-# Most VMs never touch Azure or GCP, so they install per-VM, on demand, here.
-# (aws, tigris, rclone ARE baked — they're small. See Dockerfile.iv.)
+# Azure CLI and the Google Cloud SDK are NOT installed by the default IV
+# provisioner: together they add ~2 GB of Python-bundled dependencies, which
+# would slow every fresh-VM provision. Most VMs never touch Azure or GCP, so
+# they install per-VM, on demand, here. aws, tigris, and rclone are installed by
+# provision-iv.sh.
 #
 # Idempotent: re-running a target that's already present is a no-op.
 # Arch-aware (x86_64 + aarch64). Installs system-wide via sudo (NOPASSWD on VMs).
@@ -12,13 +13,26 @@ set -euo pipefail
 
 [ $# -gt 0 ] || { echo "usage: install-cloud-cli <azure|gcloud> [...]" >&2; exit 1; }
 
+AZURE_CLI_VERSION=${AZURE_CLI_VERSION:-2.88.0-1~noble}
+GCLOUD_VERSION=${GCLOUD_VERSION:-575.0.1}
+
 install_azure() {
 	if command -v az >/dev/null 2>&1; then
 		echo "azure-cli already installed: $(az version --query '\"azure-cli\"' -o tsv 2>/dev/null || echo present)"
 		return
 	fi
-	# Microsoft's official deb installer — detects arch internally.
-	curl -fsSL https://aka.ms/InstallAzureCLIDeb | sudo bash
+	# Microsoft's signed apt repository, with a pinned package version.
+	local keyring=/usr/share/keyrings/microsoft-azure-cli.gpg
+	local arch
+	arch=$(dpkg --print-architecture)
+	sudo rm -f "$keyring"
+	curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+		| gpg --dearmor \
+		| sudo tee "$keyring" >/dev/null
+	echo "deb [arch=${arch} signed-by=${keyring}] https://packages.microsoft.com/repos/azure-cli/ noble main" \
+		| sudo tee /etc/apt/sources.list.d/azure-cli.list >/dev/null
+	sudo apt-get update
+	sudo apt-get install -y --no-install-recommends "azure-cli=${AZURE_CLI_VERSION}"
 	sudo rm -rf /var/lib/apt/lists/*
 	az version
 }
@@ -28,11 +42,12 @@ install_gcloud() {
 		echo "gcloud already installed: $(gcloud --version | head -1)"
 		return
 	fi
-	# Self-contained SDK tarball into /opt. uname -m emits x86_64/aarch64;
-	# gcloud's 64-bit ARM asset is named "arm".
+	# Version-pinned, self-contained SDK tarball into /opt. uname -m emits
+	# x86_64/aarch64; gcloud's 64-bit ARM asset is named "arm".
 	local arch
 	arch=$(uname -m | sed 's/aarch64/arm/')
-	curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-${arch}.tar.gz" -o /tmp/gcloud.tar.gz
+	curl -fsSL "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-${GCLOUD_VERSION}-linux-${arch}.tar.gz" -o /tmp/gcloud.tar.gz
+	sudo rm -rf /opt/google-cloud-sdk
 	sudo tar -xzf /tmp/gcloud.tar.gz -C /opt
 	rm /tmp/gcloud.tar.gz
 	sudo /opt/google-cloud-sdk/install.sh --quiet --path-update false --usage-reporting false

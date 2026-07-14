@@ -9,15 +9,37 @@ and tag.
 
 ## Changing tool versions
 
-Tool versions are pinned inside `provision-iv.sh` (`DUCKDB_VERSION`,
-`QUARTO_VERSION`). Edit the pins, commit, and tag a new revision. Newly
-provisioned VMs pick up the change when they check out the new tag.
+Tool versions and per-architecture checksums are pinned inside
+`provision-iv.sh`. Change both the version and checksum values, run the local
+validation suite, test provisioning on a disposable stock exeuntu VM, then
+commit and tag the revision. The provisioner checks installed versions and
+upgrades mismatches when it is re-run.
 
 ```bash
 cd ~/iv-image
-$EDITOR provision-iv.sh        # bump DUCKDB_VERSION / QUARTO_VERSION, etc.
-# commit + tag
+$EDITOR provision-iv.sh
+./tests/test-ssh-guard.sh
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+quarto render
+# provision + tests/smoke-provision.sh on a disposable VM
 ```
+
+## Cutting a release
+
+Provisioning releases are Git tags, not OCI image tags. Prepare and review a
+release branch, merge it to `main`, then tag the exact tested merge commit:
+
+```bash
+git switch main
+git pull --ff-only
+# verify HEAD is the reviewed release commit and rerun the validation suite
+git tag -a 2.5.0 -m "iv provisioning 2.5.0"
+git push origin main
+git push origin 2.5.0
+```
+
+Never move an existing release tag. Consumers pin the recipe by checking out the
+tag before running `provision-iv.sh`.
 
 ## Refreshing the vendored skills
 

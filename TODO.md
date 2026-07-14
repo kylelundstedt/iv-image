@@ -1,5 +1,17 @@
 # TODO
 
+## Provisioning releases
+
+- Before publishing `2.5.0`, run the provisioner and `tests/smoke-provision.sh` on a newly-created disposable stock exeuntu VM; local control-plane SSH is currently blocked by a missing private key.
+- Consider separating the rendered build directory from the nginx docroot so preview cannot modify the live site.
+
+## Retired custom-image notes
+
+The items below are retained only as historical research. Stock exeuntu plus
+`provision-iv.sh` replaced the custom-image workflow because custom images lost
+exe.dev's Shelley integration. Do not resume image publication without revisiting
+that architectural decision.
+
 ## arm64 iv-image via Apple `container` 1.0 on klundstedt-mini
 
 Goal: build iv-image **natively for linux/arm64** on `klundstedt-mini` (Apple Silicon, Apple
@@ -49,16 +61,10 @@ provisioner pulls `--image` only from a `*.exe.xyz`-proxied registry).
 
 ## Pending (amd64, unrelated to arm64)
 
-- IV 2.3.0 is uncommitted: arch-aware DuckDB/Quarto edits in `Dockerfile.iv`, `IV_VERSION`
-  bump, new `agent/codex-config.toml`. Commit + `build.sh` + push when ready.
+- Historical only: the custom-image 2.3/2.4 work was superseded by stock exeuntu
+  plus versioned provisioning releases.
 
 ## Doc-site tooling
 
-- **Done:** `provision-docsite` now serves `_site` with **nginx** (gzip + immutable cache
-  headers on `site_libs/`) instead of `python3 -m http.server` — payload ~80%+ smaller. Uses
-  the nginx already in exeuntu (was installed, disabled). nginx access logs also enable
-  log-based analytics (e.g. GoAccess) without a client-side beacon, if wanted later.
-- Consider separating build dir from served docroot (render to `_site`, publish by syncing
-  to a dedicated docroot) so `quarto preview` can run without touching the live site. This
-  is the "governed" render→promote pattern; the current tool serves the working-tree `_site`
-  directly, which couples preview to production. (Done ad-hoc for the `thoughts` site.)
+- **Done:** `provision-docsite` serves `_site` with **nginx** (gzip + immutable
+  cache headers on `site_libs/`) instead of `python3 -m http.server`.

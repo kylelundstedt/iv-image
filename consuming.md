@@ -20,11 +20,11 @@ ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/ky
   && git -C ~/iv-image checkout <tag-or-sha> && ~/iv-image/provision-iv.sh"
 ```
 
-For reproducibility, pin by checking out a git tag/sha of this repo before
-running `provision-iv.sh` — tool versions are pinned inside the script and the
-team skills are vendored (frozen) in the repo. Per-VM provenance is recorded in
-`~/iv-provision.lock` (exeuntu image revision, shelley version, DuckDB/Quarto
-versions, skills count, and the provision repo git sha).
+For reproducibility, pin by checking out a Git tag/sha of this repo before
+running `provision-iv.sh`. Tool releases and checksums are pinned in the script,
+and team skills are vendored in the repo. `~/iv-provision.lock` records the
+exeuntu image revision, Shelley version, installed DuckDB/Quarto/AWS/Tigris/rclone
+versions, skills count, manifest pin, and provisioning repository SHA.
 
 ## Joining the tailnet (on demand)
 
@@ -39,11 +39,14 @@ the join step needs it to mint the key. See `tailnet.md` for the full flow.
 
 ## Upgrading to a new revision
 
-To move a VM to a newer provisioning recipe, destroy + recreate under the same
-name, then re-provision at the new tag/sha. The `upgrade-vm` agent skill does
-this without a `-1` tailnet name: from a control node it deletes the stale
-tailnet node, recreates the VM, and rejoins. It **wipes the VM's local disk** —
-reprovision, not migrate. See `tailnet.md`.
+To move a VM to a newer provisioning recipe, update `~/iv-image` to the target
+tag/sha and re-run `provision-iv.sh`. This is normally an in-place operation: it
+preserves the disk and tailnet identity while refreshing pinned tools, vendored
+skills, agent configuration, and `~/iv-provision.lock`.
+
+The `upgrade-vm` skill also documents the exceptional destroy/recreate path for
+cases that genuinely require a fresh disk or newer exe.dev-managed base. That
+path wipes the VM; see `tailnet.md`.
 
 ## Agent config (installed by provision-iv.sh)
 

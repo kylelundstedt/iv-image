@@ -48,14 +48,19 @@ onto stock exeuntu takes ~23 seconds.
 
 ## Reproducibility
 
-The pinned artifact is the git commit of this repo: check out a specific tag/sha
-on the VM, run `provision-iv.sh`, and you get the same result.
+The pinned artifact is the git commit or release tag of this repo: check out a
+specific revision on the VM, run `provision-iv.sh`, and get the same IV layer on
+that architecture.
 
-- Tool versions are pinned inside `provision-iv.sh` (DuckDB 1.5.3, Quarto 1.9.38).
+- DuckDB, Quarto, AWS CLI, Tigris CLI, and rclone versions plus per-architecture
+  SHA-256 checksums are pinned inside `provision-iv.sh`.
+- The provisioner compares installed versions to the recipe and upgrades or
+  repairs mismatches; it does not treat any command on `PATH` as sufficient.
 - Skills are vendored into `skills/` (committed = frozen); `provision-iv.sh`
   copies them in with no node/npx needed on the VM.
+- Azure CLI and gcloud remain on demand through `install-cloud-cli`, with pinned
+  package/archive versions.
 - The base exeuntu image cannot be pinned — exe.dev manages it (floating) and
   there is no version/digest selector on `ssh exe.dev new`. Instead,
-  `provision-iv.sh` records it in `~/iv-provision.lock` (exeuntu image revision,
-  shelley version, DuckDB/Quarto versions, skills count, and the provision repo
-  git sha) as the per-VM provenance record.
+  `provision-iv.sh` records it in `~/iv-provision.lock` along with the installed
+  tool versions, Shelley version, skills count, and provisioning Git SHA.

@@ -21,18 +21,23 @@ the exe.dev edge and runs two commands on the VM.
 ```bash
 ssh -o ConnectTimeout=30 <vm>.exe.xyz 'bash -s' <<'REMOTE'
 set -euo pipefail
-# Stock exeuntu ships tailscaled DISABLED (iv-image enabled it); enable+start
-# either way so `tailscale up` can reach the local daemon.
+# Stock exeuntu may ship tailscaled disabled; enable and start it before joining.
 sudo systemctl enable --now tailscaled
 # Two-step (OAuth client behind the proxy, 2026-07): exchange for a 1h token
 # via the proxy, then mint against the public API (the proxy injects
 # Authorization on every request, so only the exchange goes through it).
 TOKEN=$(curl -fsSL -X POST -d "grant_type=client_credentials" \
-  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -r .access_token)
-KEY=$(curl -fsSL -X POST https://api.tailscale.com/api/v2/tailnet/-/keys \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -er .access_token)
+trap 'rm -f "${auth_config:-}"; unset TOKEN KEY' EXIT
+auth_config=$(mktemp)
+chmod 600 "$auth_config"
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" > "$auth_config"
+KEY=$(curl --config "$auth_config" -fsSL -X POST \
+  https://api.tailscale.com/api/v2/tailnet/-/keys \
+  -H "Content-Type: application/json" \
   -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:dev"]}}}}' \
-  | jq -r .key)
+  | jq -er .key)
+rm -f "$auth_config"
 sudo tailscale up --ssh --accept-dns --hostname="$(hostname)" --authkey="$KEY"
 tailscale status
 REMOTE
