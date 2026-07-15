@@ -2,11 +2,12 @@
 title: "Registry"
 ---
 
-> **Deprecated.** The Docker registry on `iv-registry` is no longer needed under
-> the script-based approach — no images are built or pulled. VMs run stock
-> `boldsoftware/exeuntu` and are provisioned by `provision-iv.sh` (see
-> `consuming.md`). This doc is retained for historical reference and in case the
-> registry is still used for other purposes.
+> **Retired.** The `iv-registry` VM was destroyed on 2026-07-14 (tailnet node
+> deleted too). Nothing pulled from its legacy `registry:2` container under the
+> script-based approach, and the hosted doc site it served was dropped — the
+> docs are readable in-repo, and any IV VM can serve them again with
+> `provision-docsite ~/iv-image` (disaster-recovery steps below double as the
+> recreate recipe). This doc is retained for historical reference.
 
 ## What `iv-registry` is now
 

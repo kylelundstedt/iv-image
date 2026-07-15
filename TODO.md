@@ -57,7 +57,9 @@ provisioner pulls `--image` only from a `*.exe.xyz`-proxied registry).
   (`docker buildx imagetools create` or `container` equivalent).
 - `Dockerfile.iv` is arch-aware (DuckDB/Quarto/aws/rclone derive arch); exeuntu base is
   arch-aware; `chromedp/headless-shell:stable` is a multi-arch index. No image-side blockers.
-- Cleanup: delete leftover `smoke:armtest` test image from `iv-registry`.
+- ~~Cleanup: delete leftover `smoke:armtest` test image from `iv-registry`.~~ Moot — the
+  `iv-registry` VM (and its registry container) was retired 2026-07-14; see `registry.md`.
+  Resuming any of this arm64 work would first mean recreating a registry host.
 
 ## Pending (amd64, unrelated to arm64)
 

@@ -4,7 +4,10 @@ The IV provisioning layer for exe.dev VMs: a script (`provision-iv.sh`) plus
 vendored skills and doc-site tooling that turn a stock `boldsoftware/exeuntu`
 VM into an IV dev box.
 
-**Full documentation:** [https://iv-registry.exe.xyz/](https://iv-registry.exe.xyz/)
+**Full documentation:** the `*.qmd` / `*.md` files in this repo (`consuming.md`,
+`building.md`, `bootstrap.md`, `tailnet.md`, …). The hosted doc site was retired
+with the `iv-registry` VM (2026-07-14); any IV VM can serve it again with
+`provision-docsite ~/iv-image` (see `registry.md`).
 
 ## Quick start
 
@@ -44,7 +47,7 @@ onto stock exeuntu takes ~23 seconds.
 | `skills/`          | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                            |
 | `bin/`             | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand azure/gcloud) — installed onto PATH.                          |
 | `agent/`           | Team agent config: `AGENTS.md`, Claude Code `settings.json`, Codex `config.toml`, MCP setup.                                                        |
-| `*.qmd` / `*.md`   | Quarto doc site served at `https://iv-registry.exe.xyz/`.                                                                                           |
+| `*.qmd` / `*.md`   | Documentation (Quarto sources, readable in-repo; optionally served by `provision-docsite` on any IV VM).                                            |
 
 ## Reproducibility
 
