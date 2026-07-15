@@ -2,8 +2,8 @@
 
 ## Provisioning releases
 
-- Before publishing `2.5.0`, run the provisioner and `tests/smoke-provision.sh` on a newly-created disposable stock exeuntu VM; local control-plane SSH is currently blocked by a missing private key.
 - Consider separating the rendered build directory from the nginx docroot so preview cannot modify the live site.
+- Consider merge-instead-of-overwrite for `~/.claude/settings.json` in `provision-iv.sh` (line ~175): reprovisioning wipes hooks a personal dotfiles overlay spliced in. The upgrade-vm skill's "re-run the overlay" step covers it procedurally (2026-07-14).
 
 ## Retired custom-image notes
 
@@ -66,7 +66,3 @@ provisioner pulls `--image` only from a `*.exe.xyz`-proxied registry).
 - Historical only: the custom-image 2.3/2.4 work was superseded by stock exeuntu
   plus versioned provisioning releases.
 
-## Doc-site tooling
-
-- **Done:** `provision-docsite` serves `_site` with **nginx** (gzip + immutable
-  cache headers on `site_libs/`) instead of `python3 -m http.server`.

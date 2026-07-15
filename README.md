@@ -30,6 +30,19 @@ The VM does not auto-join the tailnet; join on demand with the `join-tailnet`
 skill (see `tailnet.md`). Repo and doc-site provisioning are unchanged (see
 `consuming.md`).
 
+## Relationship to the dotfiles repo
+
+The team layer's _contents_ — the skill set, MCP server list, and the shared
+`AGENTS.md` sections — are declared in
+[kylelundstedt/dotfiles](https://github.com/kylelundstedt/dotfiles)'
+`provisioning/` manifests and vendored into this repo by `vendor-skills.sh` at
+the dotfiles commit recorded in `dotfiles-manifest.pin`. **Edit shared material
+in dotfiles, then re-vendor and bump the pin here** — dotfiles'
+`diff-provisioning.sh` flags any drift between the two repos. The division of
+labor: this repo provisions the _team_ baseline onto a VM; dotfiles'
+`install.sh` then (optionally) layers _personal_ config on top as a thin
+overlay that never touches the team layer.
+
 ## Why a script, not a custom image
 
 A custom Docker image is not recognized by exe.dev as "exeuntu", which silently
@@ -47,6 +60,9 @@ onto stock exeuntu takes ~23 seconds.
 | `skills/`          | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                            |
 | `bin/`             | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand azure/gcloud) — installed onto PATH.                          |
 | `agent/`           | Team agent config: `AGENTS.md`, Claude Code `settings.json`, Codex `config.toml`, MCP setup.                                                        |
+| `dotfiles-manifest.pin` | The dotfiles commit whose `provisioning/` manifests the vendored content comes from (see "Relationship to the dotfiles repo").                 |
+| `tests/`           | Validation suite: `smoke-provision.sh` (run on a VM after provisioning), `test-provision.sh`, `test-ssh-guard.sh`, Python unit tests — run by CI.   |
+| `.claude/skills/`  | Project-level skills for agents working in this repo (`join-tailnet`, `upgrade-vm`) — not vendored onto VMs.                                        |
 | `*.qmd` / `*.md`   | Documentation (Quarto sources, readable in-repo; optionally served by `provision-docsite` on any IV VM).                                            |
 
 ## Reproducibility
