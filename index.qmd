@@ -42,8 +42,8 @@ on the VM, run `provision-iv.sh`, and you get the same result.
   and there is no version/digest selector on `ssh exe.dev new`. Pinning it to a
   custom registry digest is exactly what breaks Shelley. Instead,
   `provision-iv.sh` records it in `~/iv-provision.lock` (exeuntu image revision,
-  Shelley version, installed DuckDB/Quarto/AWS/Tigris/rclone versions, skills
-  count, manifest pin, and provisioning Git SHA).
+  Shelley version, installed DuckDB/Quarto/AWS/Tigris/rclone/herdr versions,
+  skills count, manifest pin, and provisioning Git SHA).
 
 ## Versioning
 

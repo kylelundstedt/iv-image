@@ -23,8 +23,9 @@ ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/ky
 For reproducibility, pin by checking out a Git tag/sha of this repo before
 running `provision-iv.sh`. Tool releases and checksums are pinned in the script,
 and team skills are vendored in the repo. `~/iv-provision.lock` records the
-exeuntu image revision, Shelley version, installed DuckDB/Quarto/AWS/Tigris/rclone
-versions, skills count, manifest pin, and provisioning repository SHA.
+exeuntu image revision, Shelley version, installed
+DuckDB/Quarto/AWS/Tigris/rclone/herdr versions, skills count, manifest pin, and
+provisioning repository SHA.
 
 ## Joining the tailnet (on demand)
 

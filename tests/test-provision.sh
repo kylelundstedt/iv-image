@@ -10,11 +10,13 @@ bash -n "$script"
 
 required=(
   DUCKDB_VERSION QUARTO_VERSION AWS_CLI_VERSION TIGRIS_VERSION RCLONE_VERSION
+  HERDR_VERSION
   DUCKDB_SHA256_AMD64 DUCKDB_SHA256_ARM64
   QUARTO_SHA256_AMD64 QUARTO_SHA256_ARM64
   AWS_CLI_SHA256_X86_64 AWS_CLI_SHA256_AARCH64
   TIGRIS_SHA256_AMD64 TIGRIS_SHA256_ARM64
   RCLONE_SHA256_AMD64 RCLONE_SHA256_ARM64
+  HERDR_SHA256_X86_64 HERDR_SHA256_AARCH64
 )
 
 for name in "${required[@]}"; do
@@ -33,7 +35,7 @@ if grep -Eq 'releases/latest|rclone-current|curl[^|]*\|[^|]*(sh|bash)' "$script"
   exit 1
 fi
 
-for managed in duckdb quarto aws tigris rclone; do
+for managed in duckdb quarto aws tigris rclone herdr; do
   grep -q "/usr/local/bin/${managed}" "$script" || {
     echo "managed tool is not probed by absolute path: $managed" >&2
     exit 1

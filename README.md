@@ -53,17 +53,17 @@ onto stock exeuntu takes ~23 seconds.
 
 ## Layout
 
-| File               | Role                                                                                                                                                |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provision-iv.sh`  | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, aws/tigris/rclone, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
-| `vendor-skills.sh` | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                               |
-| `skills/`          | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                            |
-| `bin/`             | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand azure/gcloud) — installed onto PATH.                          |
-| `agent/`           | Team agent config: `AGENTS.md`, Claude Code `settings.json`, Codex `config.toml`, MCP setup.                                                        |
-| `dotfiles-manifest.pin` | The dotfiles commit whose `provisioning/` manifests the vendored content comes from (see "Relationship to the dotfiles repo").                 |
-| `tests/`           | Validation suite: `smoke-provision.sh` (run on a VM after provisioning), `test-provision.sh`, `test-ssh-guard.sh`, Python unit tests — run by CI.   |
-| `.claude/skills/`  | Project-level skills for agents working in this repo (`join-tailnet`, `upgrade-vm`) — not vendored onto VMs.                                        |
-| `*.qmd` / `*.md`   | Documentation (Quarto sources, readable in-repo; optionally served by `provision-docsite` on any IV VM).                                            |
+| File                    | Role                                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, aws/tigris/rclone, herdr, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
+| `vendor-skills.sh`      | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                                      |
+| `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
+| `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand azure/gcloud) — installed onto PATH.                                 |
+| `agent/`                | Team agent config: `AGENTS.md`, Claude Code `settings.json`, Codex `config.toml`, MCP setup.                                                               |
+| `dotfiles-manifest.pin` | The dotfiles commit whose `provisioning/` manifests the vendored content comes from (see "Relationship to the dotfiles repo").                             |
+| `tests/`                | Validation suite: `smoke-provision.sh` (run on a VM after provisioning), `test-provision.sh`, `test-ssh-guard.sh`, Python unit tests — run by CI.          |
+| `.claude/skills/`       | Project-level skills for agents working in this repo (`join-tailnet`, `upgrade-vm`) — not vendored onto VMs.                                               |
+| `*.qmd` / `*.md`        | Documentation (Quarto sources, readable in-repo; optionally served by `provision-docsite` on any IV VM).                                                   |
 
 ## Reproducibility
 
@@ -71,8 +71,10 @@ The pinned artifact is the git commit or release tag of this repo: check out a
 specific revision on the VM, run `provision-iv.sh`, and get the same IV layer on
 that architecture.
 
-- DuckDB, Quarto, AWS CLI, Tigris CLI, and rclone versions plus per-architecture
-  SHA-256 checksums are pinned inside `provision-iv.sh`.
+- DuckDB, Quarto, AWS CLI, Tigris CLI, rclone, and herdr versions plus
+  per-architecture SHA-256 checksums are pinned inside `provision-iv.sh`
+  (herdr publishes no checksums upstream — its pins are computed locally at
+  pin time).
 - The provisioner compares installed versions to the recipe and upgrades or
   repairs mismatches; it does not treat any command on `PATH` as sufficient.
 - Skills are vendored into `skills/` (committed = frozen); `provision-iv.sh`

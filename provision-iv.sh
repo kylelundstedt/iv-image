@@ -11,6 +11,7 @@ QUARTO_VERSION=1.9.38
 AWS_CLI_VERSION=2.35.7
 TIGRIS_VERSION=3.1.0
 RCLONE_VERSION=1.74.3
+HERDR_VERSION=0.7.4
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
@@ -22,6 +23,10 @@ TIGRIS_SHA256_AMD64=bf79f07bddddbca5858b3687a4fd1ba93851a5c8ffea7cfc47a6cfe90b02
 TIGRIS_SHA256_ARM64=c6f777cae123ec83138e3b6dd0c637236abb63b3b42e6caccd68599a71a9e471
 RCLONE_SHA256_AMD64=dbee7ccd7a5d617e4ed4cd4555c16669b511abfe8d31164f61be35ac9e999bd2
 RCLONE_SHA256_ARM64=8f8d47446e061f80c3256659fe8e21f56d72d96aaefe1275d088ea5eb6b42aa7
+# herdr publishes no checksum files — these are sha256sums of the release
+# assets, computed locally at pin time. Version bumps must recompute them.
+HERDR_SHA256_X86_64=bc0fc02d4ba500f9cac2353a43e67fe036785ecca6eb55378e050fac3c103059
+HERDR_SHA256_AARCH64=544e0002de42806d1ab64ccdef3a7e7414f24717b0b6b022bc9e57d2eefd26a2
 
 if [[ $EUID -eq 0 ]]; then
   echo "provision-iv: run as the VM login user, not with sudo" >&2
@@ -53,8 +58,8 @@ case "$DPKG_ARCH" in
 esac
 
 case "$UNAME_ARCH" in
-  x86_64) AWS_CLI_SHA256=$AWS_CLI_SHA256_X86_64 ;;
-  aarch64) AWS_CLI_SHA256=$AWS_CLI_SHA256_AARCH64 ;;
+  x86_64) AWS_CLI_SHA256=$AWS_CLI_SHA256_X86_64; HERDR_SHA256=$HERDR_SHA256_X86_64 ;;
+  aarch64) AWS_CLI_SHA256=$AWS_CLI_SHA256_AARCH64; HERDR_SHA256=$HERDR_SHA256_AARCH64 ;;
   *) echo "provision-iv: unsupported uname architecture: $UNAME_ARCH" >&2; exit 1 ;;
 esac
 
@@ -69,6 +74,7 @@ quarto_version() { /usr/local/bin/quarto --version 2>/dev/null | head -1 || true
 aws_version() { /usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*#\1#p' || true; }
 tigris_version() { /usr/local/bin/tigris --version 2>/dev/null | head -1 | sed 's/^v//' || true; }
 rclone_version() { /usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true; }
+herdr_version() { /usr/local/bin/herdr --version 2>/dev/null | awk '{print $2}' || true; }
 
 install_duckdb() {
   local actual
@@ -157,11 +163,25 @@ install_rclone() {
   [[ $(rclone_version) == "$RCLONE_VERSION" ]]
 }
 
+# herdr releases bare binaries named with uname-style arch (x86_64/aarch64)
+install_herdr() {
+  local actual
+  actual=$(herdr_version)
+  echo "== herdr $HERDR_VERSION ($UNAME_ARCH; installed: ${actual:-missing}) =="
+  [[ $actual == "$HERDR_VERSION" ]] && return
+  download_verified \
+    "https://github.com/ogulcancelik/herdr/releases/download/v${HERDR_VERSION}/herdr-linux-${UNAME_ARCH}" \
+    "$HERDR_SHA256" "$TMP/herdr"
+  sudo install -m 0755 "$TMP/herdr" /usr/local/bin/herdr
+  [[ $(herdr_version) == "$HERDR_VERSION" ]]
+}
+
 install_duckdb
 install_quarto
 install_aws
 install_tigris
 install_rclone
+install_herdr
 
 echo "== doc-site and cloud helpers =="
 for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli; do
@@ -245,6 +265,7 @@ LOCK="$HOME/iv-provision.lock"
   echo "aws_cli_version=$(aws_version)"
   echo "tigris_version=$(tigris_version)"
   echo "rclone_version=$(rclone_version)"
+  echo "herdr_version=$(herdr_version)"
   echo "dotfiles_manifest_pin=$(tr -d '[:space:]' < "$IV_REPO/dotfiles-manifest.pin" 2>/dev/null || echo unknown)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"
