@@ -44,6 +44,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p 'test_*.py' -v
           tests/test-provision.sh
+          tests/test-agentsview-source.sh
           tests/test-ssh-guard.sh
 
       - name: Render documentation

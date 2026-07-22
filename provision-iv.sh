@@ -12,6 +12,7 @@ AWS_CLI_VERSION=2.35.7
 TIGRIS_VERSION=3.1.0
 RCLONE_VERSION=1.74.3
 HERDR_VERSION=0.7.4
+AGENTSVIEW_VERSION=0.38.1
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
@@ -27,6 +28,8 @@ RCLONE_SHA256_ARM64=8f8d47446e061f80c3256659fe8e21f56d72d96aaefe1275d088ea5eb6b4
 # assets, computed locally at pin time. Version bumps must recompute them.
 HERDR_SHA256_X86_64=bc0fc02d4ba500f9cac2353a43e67fe036785ecca6eb55378e050fac3c103059
 HERDR_SHA256_AARCH64=544e0002de42806d1ab64ccdef3a7e7414f24717b0b6b022bc9e57d2eefd26a2
+AGENTSVIEW_SHA256_AMD64=3b3f7098ab855571df8e6d6c99efdf307be3407d32197816f0c4c698fac4f997
+AGENTSVIEW_SHA256_ARM64=aace4bea2f6b8626fb9aaecf28b4ffaf93d510550e3468231de81f741266d037
 
 if [[ $EUID -eq 0 ]]; then
   echo "provision-iv: run as the VM login user, not with sudo" >&2
@@ -46,6 +49,7 @@ case "$DPKG_ARCH" in
     TIGRIS_SHA256=$TIGRIS_SHA256_AMD64
     TIGRIS_ASSET_ARCH=x64
     RCLONE_SHA256=$RCLONE_SHA256_AMD64
+    AGENTSVIEW_SHA256=$AGENTSVIEW_SHA256_AMD64
     ;;
   arm64)
     DUCKDB_SHA256=$DUCKDB_SHA256_ARM64
@@ -53,6 +57,7 @@ case "$DPKG_ARCH" in
     TIGRIS_SHA256=$TIGRIS_SHA256_ARM64
     TIGRIS_ASSET_ARCH=arm64
     RCLONE_SHA256=$RCLONE_SHA256_ARM64
+    AGENTSVIEW_SHA256=$AGENTSVIEW_SHA256_ARM64
     ;;
   *) echo "provision-iv: unsupported dpkg architecture: $DPKG_ARCH" >&2; exit 1 ;;
 esac
@@ -75,6 +80,7 @@ aws_version() { /usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*
 tigris_version() { /usr/local/bin/tigris --version 2>/dev/null | head -1 | sed 's/^v//' || true; }
 rclone_version() { /usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true; }
 herdr_version() { /usr/local/bin/herdr --version 2>/dev/null | awk '{print $2}' || true; }
+agentsview_version() { /usr/local/bin/agentsview version --format json 2>/dev/null | jq -r '.version' | sed 's/^v//' || true; }
 
 install_duckdb() {
   local actual
@@ -176,17 +182,54 @@ install_herdr() {
   [[ $(herdr_version) == "$HERDR_VERSION" ]]
 }
 
+install_agentsview() {
+  local actual
+  actual=$(agentsview_version)
+  echo "== AgentsView $AGENTSVIEW_VERSION ($DPKG_ARCH; installed: ${actual:-missing}) =="
+  [[ $actual == "$AGENTSVIEW_VERSION" ]] && return
+  download_verified \
+    "https://github.com/kenn-io/agentsview/releases/download/v${AGENTSVIEW_VERSION}/agentsview_${AGENTSVIEW_VERSION}_linux_${DPKG_ARCH}.tar.gz" \
+    "$AGENTSVIEW_SHA256" "$TMP/agentsview.tar.gz"
+  mkdir -p "$TMP/agentsview"
+  tar -xzf "$TMP/agentsview.tar.gz" -C "$TMP/agentsview"
+  sudo install -m 0755 "$TMP/agentsview/agentsview" /usr/local/bin/agentsview
+  [[ $(agentsview_version) == "$AGENTSVIEW_VERSION" ]]
+}
+
 install_duckdb
 install_quarto
 install_aws
 install_tigris
 install_rclone
 install_herdr
+install_agentsview
 
 echo "== doc-site and cloud helpers =="
 for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli; do
   sudo install -m 0755 "$IV_REPO/bin/$tool" "/usr/local/bin/$tool"
 done
+sudo install -m 0755 "$IV_REPO/bin/agentsview-source-daemon" /usr/local/bin/agentsview-source-daemon
+
+# Install the source-daemon template unconditionally, but activate only after
+# the separate network-identity and local-secret prerequisites are explicit.
+echo "== AgentsView source service =="
+mkdir -p "$HOME/.config/systemd/user"
+install -m 0644 "$IV_REPO/systemd/agentsview-source.service" \
+  "$HOME/.config/systemd/user/agentsview-source.service"
+SOURCE_ENV="$HOME/.config/agentsview/source.env"
+if [[ -s $SOURCE_ENV ]] \
+    && grep -qE '^AGENTSVIEW_AUTH_TOKEN=.+$' "$SOURCE_ENV" \
+    && tailscale ip -4 >/dev/null 2>&1; then
+  chmod 600 "$SOURCE_ENV"
+  sudo loginctl enable-linger "$USER"
+  systemctl --user daemon-reload
+  systemctl --user enable --now agentsview-source.service
+  echo "AgentsView source enabled (tailnet + per-host token present)"
+else
+  systemctl --user disable --now agentsview-source.service >/dev/null 2>&1 || true
+  systemctl --user daemon-reload
+  echo "AgentsView source disabled; requires tailnet reachability and $SOURCE_ENV"
+fi
 
 echo "== agent config =="
 mkdir -p "$HOME/.agents" "$HOME/.claude" "$HOME/.codex"
@@ -266,6 +309,7 @@ LOCK="$HOME/iv-provision.lock"
   echo "tigris_version=$(tigris_version)"
   echo "rclone_version=$(rclone_version)"
   echo "herdr_version=$(herdr_version)"
+  echo "agentsview_version=$(agentsview_version)"
   echo "dotfiles_manifest_pin=$(tr -d '[:space:]' < "$IV_REPO/dotfiles-manifest.pin" 2>/dev/null || echo unknown)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"

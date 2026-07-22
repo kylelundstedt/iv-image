@@ -30,6 +30,27 @@ The VM does not auto-join the tailnet; join on demand with the `join-tailnet`
 skill (see `tailnet.md`). Repo and doc-site provisioning are unchanged (see
 `consuming.md`).
 
+### AgentsView source activation
+
+AgentsView `0.38.1` is installed on every IV VM, but its source daemon is
+fail-closed and disabled until both prerequisites exist:
+
+1. the VM is joined to Tailscale; and
+2. `~/.config/agentsview/source.env` exists with mode `0600` and contains a
+   unique per-host token:
+
+```bash
+mkdir -p ~/.config/agentsview
+printf 'AGENTSVIEW_AUTH_TOKEN=%s\n' '<unique-token>' \
+  > ~/.config/agentsview/source.env
+chmod 600 ~/.config/agentsview/source.env
+~/iv-image/provision-iv.sh
+```
+
+The user service binds only the VM's Tailscale IPv4 address on port `8080` and
+serves the authenticated HTTP remote-sync endpoints. Provisioning never joins
+the tailnet or creates a fleet-wide token as a side effect.
+
 ## Relationship to the dotfiles repo
 
 The team layer's _contents_ — the skill set, MCP server list, and the shared
@@ -67,7 +88,7 @@ onto stock exeuntu takes ~23 seconds.
 
 | File                    | Role                                                                                                                                                       |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, aws/tigris/rclone, herdr, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, aws/tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh`      | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                                      |
 | `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
 | `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand azure/gcloud) — installed onto PATH.                                 |
@@ -83,8 +104,8 @@ The pinned artifact is the git commit or release tag of this repo: check out a
 specific revision on the VM, run `provision-iv.sh`, and get the same IV layer on
 that architecture.
 
-- DuckDB, Quarto, AWS CLI, Tigris CLI, rclone, and herdr versions plus
-  per-architecture SHA-256 checksums are pinned inside `provision-iv.sh`
+- DuckDB, Quarto, AWS CLI, Tigris CLI, rclone, herdr, and AgentsView versions
+  plus per-architecture SHA-256 checksums are pinned inside `provision-iv.sh`
   (herdr publishes no checksums upstream — its pins are computed locally at
   pin time).
 - The provisioner compares installed versions to the recipe and upgrades or

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Foreground AgentsView source daemon for agent-capable IV VMs. systemd owns
+# this process. Network identity (Tailscale) and the per-host bearer token are
+# explicit prerequisites; provisioning never auto-enrolls the VM.
+set -euo pipefail
+umask 077
+
+: "${AGENTSVIEW_AUTH_TOKEN:?AGENTSVIEW_AUTH_TOKEN is required}"
+command -v tailscale >/dev/null 2>&1 || {
+  echo "agentsview-source: tailscale is not installed" >&2
+  exit 1
+}
+TS_IP=$(tailscale ip -4 2>/dev/null | head -1)
+[[ -n $TS_IP ]] || {
+  echo "agentsview-source: VM is not joined to Tailscale" >&2
+  exit 1
+}
+
+# AgentsView otherwise falls forward to a different port when 8080 is busy,
+# which would leave the collector polling a dead endpoint. Fail closed instead.
+if command -v ss >/dev/null 2>&1 && ss -ltnH '( sport = :8080 )' 2>/dev/null | grep -q .; then
+  echo "agentsview-source: TCP port 8080 is already in use" >&2
+  exit 1
+fi
+
+DATA_DIR=${AGENTSVIEW_DATA_DIR:-$HOME/.agentsview}
+mkdir -p "$DATA_DIR"
+chmod 700 "$DATA_DIR"
+export AGENTSVIEW_DATA_DIR="$DATA_DIR"
+
+AGENTSVIEW_BIN=${AGENTSVIEW_BIN:-/usr/local/bin/agentsview}
+[[ -x $AGENTSVIEW_BIN ]] || {
+  echo "agentsview-source: binary not executable: $AGENTSVIEW_BIN" >&2
+  exit 1
+}
+
+HOSTNAME=$(hostname -s)
+TAILNET=$(tailscale status --json 2>/dev/null | jq -r '.MagicDNSSuffix // empty')
+[[ -n $TAILNET ]] || {
+  echo "agentsview-source: Tailscale MagicDNS suffix unavailable" >&2
+  exit 1
+}
+PUBLIC_URL="http://${HOSTNAME}.${TAILNET}:8080"
+
+exec "$AGENTSVIEW_BIN" serve \
+  --host "$TS_IP" \
+  --port 8080 \
+  --public-url "$PUBLIC_URL" \
+  --no-browser \
+  --no-update-check \
+  --require-auth
