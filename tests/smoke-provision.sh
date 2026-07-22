@@ -16,6 +16,7 @@ actual_tigris=$(/usr/local/bin/tigris --version | head -1 | sed 's/^v//')
 actual_rclone=$(/usr/local/bin/rclone version | sed -nE '1s/^rclone v?//p')
 actual_herdr=$(/usr/local/bin/herdr --version | awk '{print $2}')
 actual_agentsview=$(/usr/local/bin/agentsview version --format json | jq -r '.version' | sed 's/^v//')
+actual_apex=$(/usr/local/bin/apex --version | awk 'NR == 1 {print $2}')
 
 [[ $actual_duckdb == "$(expected_value DUCKDB_VERSION)" ]]
 [[ $actual_quarto == "$(expected_value QUARTO_VERSION)" ]]
@@ -24,6 +25,7 @@ actual_agentsview=$(/usr/local/bin/agentsview version --format json | jq -r '.ve
 [[ $actual_rclone == "$(expected_value RCLONE_VERSION)" ]]
 [[ $actual_herdr == "$(expected_value HERDR_VERSION)" ]]
 [[ $actual_agentsview == "$(expected_value AGENTSVIEW_VERSION)" ]]
+[[ $actual_apex == "$(expected_value APEX_VERSION)" ]]
 
 for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli agentsview-source-daemon; do
   test -x "/usr/local/bin/$tool"
@@ -51,5 +53,6 @@ grep -qx "tigris_version=$actual_tigris" "$lock"
 grep -qx "rclone_version=$actual_rclone" "$lock"
 grep -qx "herdr_version=$actual_herdr" "$lock"
 grep -qx "agentsview_version=$actual_agentsview" "$lock"
+grep -qx "apex_version=$actual_apex" "$lock"
 
 printf 'smoke-provision: IV layer is healthy (%s)\n' "$lock"

@@ -76,6 +76,31 @@ are created on demand and remain read-only unless a dedicated writer is
 temporarily attached for an explicit push test; delete the canary after
 validation. No VM worktree is authoritative.
 
+## General-purpose Markdown with Apex
+
+[Apex](https://github.com/ApexMarkdown/apex) is installed as the lightweight
+Markdown command for previews, generated reports, terminal reading, and format
+conversion. Quarto remains installed for multi-page documentation websites.
+
+```bash
+# Read Markdown in the terminal.
+apex -t terminal README.md
+
+# Produce a standalone HTML preview or report.
+apex README.md --standalone --pretty -o /tmp/README.html
+
+# Normalize a document to GitHub Flavored Markdown.
+apex notes.md -t gfm > /tmp/notes.gfm.md
+
+# Emit an HTML fragment for another program or template to consume.
+apex notes.md > /tmp/notes.fragment.html
+```
+
+Apex is version-pinned and checksum-verified by `provision-iv.sh`, like the
+other provisioned binaries. Prefer it for document-level Markdown work; use
+`render-site`/Quarto when the output needs site navigation, search, profiles,
+or project-wide link handling.
+
 ## Why a script, not a custom image
 
 A custom Docker image is not recognized by exe.dev as "exeuntu", which silently
@@ -88,7 +113,7 @@ onto stock exeuntu takes ~23 seconds.
 
 | File                    | Role                                                                                                                                                       |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, aws/tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, Apex, aws/tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh`      | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                                      |
 | `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
 | `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand azure/gcloud) — installed onto PATH.                                 |
@@ -104,7 +129,7 @@ The pinned artifact is the git commit or release tag of this repo: check out a
 specific revision on the VM, run `provision-iv.sh`, and get the same IV layer on
 that architecture.
 
-- DuckDB, Quarto, AWS CLI, Tigris CLI, rclone, herdr, and AgentsView versions
+- DuckDB, Quarto, Apex, AWS CLI, Tigris CLI, rclone, herdr, and AgentsView versions
   plus per-architecture SHA-256 checksums are pinned inside `provision-iv.sh`
   (herdr publishes no checksums upstream — its pins are computed locally at
   pin time).

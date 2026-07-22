@@ -39,7 +39,8 @@ ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/ky
   && ~/iv-image/provision-iv.sh"
 ```
 
-`provision-iv.sh` installs DuckDB, Quarto, the cloud CLIs (aws/tigris/rclone,
+`provision-iv.sh` installs DuckDB, Quarto, Apex (the lightweight Markdown
+renderer), the cloud CLIs (aws/tigris/rclone,
 plus the `install-cloud-cli` helper for on-demand azure/gcloud), herdr, the
 doc-site tools, the team agent config (AGENTS.md, Claude settings, Codex config, MCP
 servers), and the vendored skills — no node required — and writes
