@@ -71,10 +71,10 @@ repository from `klundstedt-mini` using the checkout at
 `~/github/kylelundstedt/iv-image`. The same host owns dotfiles authoring so
 cross-repo pin bumps and vendoring changes stay in one workflow.
 
-`kgl-dotfiles` and ordinary project VMs consume iv-image read-only. A dedicated
-writer integration may be attached to the canary only for an explicit
-temporary-branch push test and must be detached immediately afterward; no VM
-worktree is authoritative.
+Ordinary project VMs consume iv-image read-only. Linux compatibility canaries
+are created on demand and remain read-only unless a dedicated writer is
+temporarily attached for an explicit push test; delete the canary after
+validation. No VM worktree is authoritative.
 
 ## Why a script, not a custom image
 
