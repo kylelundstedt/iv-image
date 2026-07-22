@@ -13,6 +13,7 @@ TIGRIS_VERSION=3.1.0
 RCLONE_VERSION=1.74.3
 HERDR_VERSION=0.7.4
 AGENTSVIEW_VERSION=0.38.1
+APEX_VERSION=1.1.13
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
@@ -30,6 +31,8 @@ HERDR_SHA256_X86_64=bc0fc02d4ba500f9cac2353a43e67fe036785ecca6eb55378e050fac3c10
 HERDR_SHA256_AARCH64=544e0002de42806d1ab64ccdef3a7e7414f24717b0b6b022bc9e57d2eefd26a2
 AGENTSVIEW_SHA256_AMD64=3b3f7098ab855571df8e6d6c99efdf307be3407d32197816f0c4c698fac4f997
 AGENTSVIEW_SHA256_ARM64=aace4bea2f6b8626fb9aaecf28b4ffaf93d510550e3468231de81f741266d037
+APEX_SHA256_AMD64=51f77ea1fda1705efbad043812f2033ef660c02592848aa00a914450c9a75c56
+APEX_SHA256_ARM64=09c763f693b18a4081a9ab7758f2b09f88df862bb431f92ae5c8afb80002b7a2
 
 if [[ $EUID -eq 0 ]]; then
   echo "provision-iv: run as the VM login user, not with sudo" >&2
@@ -50,6 +53,8 @@ case "$DPKG_ARCH" in
     TIGRIS_ASSET_ARCH=x64
     RCLONE_SHA256=$RCLONE_SHA256_AMD64
     AGENTSVIEW_SHA256=$AGENTSVIEW_SHA256_AMD64
+    APEX_SHA256=$APEX_SHA256_AMD64
+    APEX_ASSET_ARCH=x86_64
     ;;
   arm64)
     DUCKDB_SHA256=$DUCKDB_SHA256_ARM64
@@ -58,6 +63,8 @@ case "$DPKG_ARCH" in
     TIGRIS_ASSET_ARCH=arm64
     RCLONE_SHA256=$RCLONE_SHA256_ARM64
     AGENTSVIEW_SHA256=$AGENTSVIEW_SHA256_ARM64
+    APEX_SHA256=$APEX_SHA256_ARM64
+    APEX_ASSET_ARCH=aarch64
     ;;
   *) echo "provision-iv: unsupported dpkg architecture: $DPKG_ARCH" >&2; exit 1 ;;
 esac
@@ -81,6 +88,7 @@ tigris_version() { /usr/local/bin/tigris --version 2>/dev/null | head -1 | sed '
 rclone_version() { /usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true; }
 herdr_version() { /usr/local/bin/herdr --version 2>/dev/null | awk '{print $2}' || true; }
 agentsview_version() { /usr/local/bin/agentsview version --format json 2>/dev/null | jq -r '.version' | sed 's/^v//' || true; }
+apex_version() { /usr/local/bin/apex --version 2>/dev/null | awk 'NR == 1 {print $2}' || true; }
 
 install_duckdb() {
   local actual
@@ -196,6 +204,22 @@ install_agentsview() {
   [[ $(agentsview_version) == "$AGENTSVIEW_VERSION" ]]
 }
 
+install_apex() {
+  local actual
+  actual=$(apex_version)
+  echo "== Apex $APEX_VERSION ($APEX_ASSET_ARCH; installed: ${actual:-missing}) =="
+  [[ $actual == "$APEX_VERSION" ]] && return
+  download_verified \
+    "https://github.com/ApexMarkdown/apex/releases/download/v${APEX_VERSION}/apex-${APEX_VERSION}-linux-${APEX_ASSET_ARCH}.tar.gz" \
+    "$APEX_SHA256" "$TMP/apex.tar.gz"
+  mkdir -p "$TMP/apex"
+  tar -xzf "$TMP/apex.tar.gz" -C "$TMP/apex"
+  sudo install -m 0755 \
+    "$TMP/apex/apex-${APEX_VERSION}-linux-${APEX_ASSET_ARCH}/apex" \
+    /usr/local/bin/apex
+  [[ $(apex_version) == "$APEX_VERSION" ]]
+}
+
 install_duckdb
 install_quarto
 install_aws
@@ -203,6 +227,7 @@ install_tigris
 install_rclone
 install_herdr
 install_agentsview
+install_apex
 
 echo "== doc-site and cloud helpers =="
 for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli; do
@@ -310,6 +335,7 @@ LOCK="$HOME/iv-provision.lock"
   echo "rclone_version=$(rclone_version)"
   echo "herdr_version=$(herdr_version)"
   echo "agentsview_version=$(agentsview_version)"
+  echo "apex_version=$(apex_version)"
   echo "dotfiles_manifest_pin=$(tr -d '[:space:]' < "$IV_REPO/dotfiles-manifest.pin" 2>/dev/null || echo unknown)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"
