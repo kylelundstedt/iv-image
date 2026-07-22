@@ -28,6 +28,17 @@ mkdir -p "$DATA_DIR"
 chmod 700 "$DATA_DIR"
 export AGENTSVIEW_DATA_DIR="$DATA_DIR"
 
+# Zed's agent threads live on the CLIENT, not on a remote server: a VM's
+# ~/.local/share/zed holds only the remote-server payload (a ~210MB node
+# runtime, extensions, prettier) and never a threads database. Left at its
+# default, discovery exposes that tree and the collector mirrors it every sync
+# — 74% of all mirrored bytes on 2026-07-22, for zero sessions. Point ZED_DIR
+# at an empty directory instead. Remove this if Zed ever stores threads
+# server-side.
+ZED_DIR=${ZED_DIR:-$HOME/.config/agentsview/no-zed}
+mkdir -p "$ZED_DIR"
+export ZED_DIR
+
 AGENTSVIEW_BIN=${AGENTSVIEW_BIN:-/usr/local/bin/agentsview}
 [[ -x $AGENTSVIEW_BIN ]] || {
   echo "agentsview-source: binary not executable: $AGENTSVIEW_BIN" >&2
