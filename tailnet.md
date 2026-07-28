@@ -97,6 +97,39 @@ It receives only the one-use auth key it presents to `tailscale up` — short-li
 non-reusable, preauthorized, and tagged. Do not bake Tailscale credentials into
 the image, a setup script, environment variables, dotfiles, or repo files.
 
+## Alternatives considered
+
+Two simpler-looking paths exist. Both were evaluated 2026-07-28 and rejected;
+the two-step mint above is the minimum shape that keeps the long-lived
+credential off the VM while still producing a **tag-owned** node.
+
+**OAuth client secret used directly as the auth key.** Tailscale accepts an
+OAuth client secret in place of an auth key
+(`tailscale up --auth-key='$SECRET?ephemeral=true&preauthorized=true'
+--advertise-tags=tag:dev`), and such devices stay tag-owned. This would collapse
+the mint to zero API calls — but it puts the raw client secret in the VM's
+process arguments, which is exactly what the exe.dev proxy exists to prevent.
+Two `curl` calls is the price of the security boundary above.
+
+**OAuth device provisioning**
+(<https://tailscale.com/docs/features/oauth-apps/device-provisioning>, alpha as
+of 2026-06). An authorization-code flow where the access token _is_ the auth
+key — no separate key-creation call. It does not fit:
+
+- It requires a **human consent click per device**, with no refresh tokens. The
+  join path is unattended by design; an agent runs it and the VM comes up.
+- Devices are **user-owned, not tag-owned**. The dotfiles ssh_config dispatches
+  on `tag:dev` via `Match host *.ts.net exec "ssh-tailnet-tagged %h tag:dev"`,
+  which is what lets a new VM work without re-running `install.sh`. Untagged
+  user devices would need a hand-written stanza each, and any ACL keyed on
+  `tag:dev` would miss them.
+- "Only users in the same tailnet as the OAuth app can authorize devices
+  through it" — at odds with the per-client-tailnet multi-tenant direction.
+
+It is aimed at internal tools provisioning devices on behalf of named users (an
+IT self-service portal), not at machine-to-machine fleet enrollment. Revisit
+only if the shape of the fleet changes to want user-attributed nodes.
+
 ## Stale-node `-1` suffix
 
 Tailscale MagicDNS names are sticky per node. If you rebuild a VM with a hostname
