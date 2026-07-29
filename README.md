@@ -103,11 +103,34 @@ or project-wide link handling.
 
 ## Why a script, not a custom image
 
-A custom Docker image is not recognized by exe.dev as "exeuntu", which silently
-disables Shelley (exe.dev's built-in coding agent): no VMs-list icon, no
-detail-page Shelley button, and exe.dev never injects the shelley binary at VM
-creation. Stock exeuntu keeps Shelley fully working. Provisioning the IV layer
-onto stock exeuntu takes ~23 seconds.
+**Correction, 2026-07-28.** This section used to say a custom image "silently
+disables Shelley" and that stock exeuntu was therefore required. That is wrong,
+and it blocked the slim-base work for months. exe.dev supports an opt-in label —
+`ssh exe.dev doc customization`:
+
+> `LABEL exe.dev/install-shelley=true` makes exe.dev automatically install a
+> recent Shelley in `/usr/local/bin` on creation and makes the UI assume that
+> Shelley is installed.
+
+So a custom image loses Shelley only **by default**, not necessarily. What
+remains true is that a custom image is not recognised as "exeuntu", so anything
+keying off that (`EXEUNTU=1`, `/exe.dev/etc/image.conf` labels) is absent.
+
+The real reason this stays a script is different, and it survives the
+correction: **exe.dev fixes a VM's image at creation and offers no way to move a
+live VM onto a newer one** (`new`, `rm`, `restart`, `cp`, `resize` — `cp` clones
+the disk you already have). Every version bump in the pinned tool list at the
+top of `provision-iv.sh` would therefore become a fleet **recreate**, whereas
+today it is a re-run in place (`upgrade-vm` Path A, ~23 seconds).
+
+And baking buys nothing on disk: exe.dev bills each VM's own ext4 usage with no
+cross-VM dedup (`ssh exe.dev doc faq/disk-usage`), so moving a binary from
+`~/.local` into an image layer relocates the bytes rather than removing them.
+
+The disk win comes from the **base**, not from baking: exeuntu is ~4 GB, and a
+slim base drops most of it. That argues for a slim base carrying the OS packages
+and this script continuing to carry the volatile, version-pinned tools. See
+`dotfiles/agent_docs/exe-dev-remediation.md` (Track 2).
 
 ## Layout
 

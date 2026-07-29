@@ -13,8 +13,12 @@ its own ownership — they are orchestrated in order, not merged into one script
 | 4    | Clone the work repo + serve its doc site      | repo integration + `provision-docsite`     |
 | 5    | _(optional)_ Personal overlay                 | your dotfiles `install.sh` (separate repo) |
 
-Stock exeuntu is deliberate: a custom image disables Shelley (no list icon, no
-detail-page button, no `<vm>.shelley.exe.xyz`). See `index.qmd` for the rationale.
+Stock exeuntu is deliberate — but **not** because a custom image must lose
+Shelley. It loses Shelley only by default; `LABEL exe.dev/install-shelley=true`
+opts back in (`ssh exe.dev doc customization`). The durable reason is that
+exe.dev fixes the image at creation with no way to move a live VM onto a newer
+one, so baking the version-pinned tools would turn every bump into a fleet
+recreate. See "Why a script, not a custom image" in `README.md`.
 
 ## 1. Create the VM (stock exeuntu)
 
