@@ -184,35 +184,28 @@ def strip_frontmatter(text: str) -> tuple[str, str | None]:
 # Kramdown-style relaxed tables, where a GFM separator row is consumed as data
 # and the header row comes out as <td> inside <tbody> with no <thead>. Measured
 # 2026-07-29 — the default silently degrades every table on the site.
-# apex mode is selectable because neither choice is free.
+# DECIDED 2026-07-29: apex, `-m gfm`. Full stop.
 #
-# `gfm` is the DEFAULT here, for correctness. apex's quarto/unified mode loses
-# tables outright in a case reduced to nine lines on 2026-07-29:
+# A fleet survey of all five sites (209 pages) found exactly ONE piece of
+# Quarto-only syntax: a single fenced div, `::: {#home-recent}`, in
+# kgl-thoughts' index.qmd. iv-docs (126 pages), gitlake-examples, gitlake and
+# ave-adapters use none. Earlier claims to the contrary were a grep counting a
+# Python string literal, Entire metadata and AWS ARNs (arn:aws:s3:::...) as
+# fenced divs.
 #
-#     - **Item.** Some text here.
-#
-#     Intro:
-#
-#     | A | B |
-#     | --- | --- |
-#     | 1 | 2 |
-#
-#     The relationship is **WAP : table writes :: AVE : executions** — same shape.
-#
-# -> 0 tables. Needs all three: a list item, an intervening table, and a later
-# `::`. Remove any one, or replace `::` with anything else, and the table
-# returns. --no-divs / --no-spans / --no-per-cell-alignment do NOT help, so it
-# is not the fenced-div parser. `-m gfm` and lowdown both render it correctly.
-# This silently dropped 2 of 4 tables on gitlake's ave_methodology page.
-#
-# The cost of `gfm`: Pandoc fenced divs and callouts render as literal text.
-# gitlake does not use them (its `:::` are mermaid node styling), but iv-docs
-# does — so that site must pass `--apex-mode quarto` and be diffed with
-# tests/sitediff.py before anyone trusts the output.
+# So the source markdown gets changed in the few places that need it, rather
+# than the renderer bending to accommodate them. That makes `-m gfm` correct
+# everywhere and sidesteps the quarto-mode table bug entirely (a list + a table
+# + a later `::` silently loses the table; see git history for the repro).
 #
 # --no-sup-sub: apex reads MultiMarkdown ~sub~/^sup^ by default, so a literal
 # "~150-line" became <sub>150-line</sub>, swallowing text to the next tilde.
-# Quarto renders it literally; this matches that.
+# --no-relaxed-tables: quarto/unified mode eats the GFM separator row, emitting
+# the header as <td> with no <thead>.
+#
+# Known, accepted: a paragraph ending in ":" directly after a table is absorbed
+# as a table row. Text is present and correct, placement is wrong. One
+# paragraph on one page across the fleet. Not worth changing renderer over.
 APEX_BASE = ["apex", "--no-relaxed-tables", "--no-sup-sub"]
 
 # apex gets exactly one typographic case backwards: an apostrophe immediately
@@ -342,7 +335,7 @@ def main() -> int:
                     help=f"preset ({', '.join(AFTER_BODY_PRESETS)}) or a file path")
     ap.add_argument("--head", default=None, help="file of extra <head> HTML")
     ap.add_argument("--apex-mode", default="gfm", choices=["gfm", "quarto", "unified", "commonmark", "mmd", "kramdown"],
-                    help="apex processor mode (default gfm; 'quarto' adds fenced divs/callouts but drops some tables)")
+                    help="apex processor mode (default gfm; escape hatch only — see the note above)")
     ap.add_argument("--no-md-twins", action="store_true",
                     help="skip copying sources next to the HTML")
     args = ap.parse_args()
