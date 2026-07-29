@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""render-md-site [repo] — render a markdown repo to <repo>/_site with apex.
+"""render-md-site [repo] — render a markdown repo to <repo>/_site with lowdown.
 
 The lightweight replacement for `render-site` (Quarto). Quarto is 423 MB and
 none of these sites use a single one of its computational features — no r,
@@ -11,10 +11,9 @@ so a/b/c.md becomes _site/a/b/c.html and every relative link keeps working.
 That rules out mdBook (wants SUMMARY.md), Hugo and Zola (want their own
 content/ layout) — all of which would restructure the repo to suit themselves.
 
-apex does the markdown; this does the site. apex emits an HTML *fragment*
-(documented: "Emit an HTML fragment for another program or template to
-consume"), which this wraps in a template with sidebar navigation, a per-page
-table of contents, and any extra head/body HTML the site needs.
+lowdown does the markdown; this does the site. lowdown emits an HTML fragment,
+which this wraps in a template with sidebar navigation, a per-page table of
+contents, and any extra head/body HTML the site needs.
 
 Not implemented, and the one real loss against Quarto: full-text search. The
 sidebar and TOC replace Quarto's navigation; search would want a JSON index and
@@ -68,7 +67,8 @@ AFTER_BODY_PRESETS = {
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
   mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
   let i = 0;
-  // apex -m quarto emits ```mermaid as <pre lang="mermaid"><code>.
+  // lowdown emits ```mermaid as <pre><code class="language-mermaid">; the
+  // other selectors cover renderers that use a class or lang attribute.
   for (const el of document.querySelectorAll('pre[lang="mermaid"] > code, pre.mermaid, div.mermaid, pre > code.language-mermaid')) {
     const host = el.tagName === 'CODE' ? el.parentElement : el;
     try {
@@ -206,7 +206,8 @@ def discover(root: Path, includes: list[str], user_excludes: list[str],
 
 
 def strip_frontmatter(text: str) -> tuple[str, str | None]:
-    """Return (body, title). apex passes YAML frontmatter through as content."""
+    """Return (body, title). Frontmatter is stripped here, not by the renderer,
+    so the title is available for the nav and <title> before rendering."""
     if not text.startswith("---"):
         return text, None
     end = text.find("\n---", 3)
@@ -223,77 +224,63 @@ def strip_frontmatter(text: str) -> tuple[str, str | None]:
 # Kramdown-style relaxed tables, where a GFM separator row is consumed as data
 # and the header row comes out as <td> inside <tbody> with no <thead>. Measured
 # 2026-07-29 — the default silently degrades every table on the site.
-# apex, `-m gfm`.
+# lowdown, not apex.
 #
-# gfm is not a stylistic preference — it is the only mode that does not lose
-# content. apex's unified/quarto/mmd/kramdown modes SILENTLY TRUNCATE any
-# paragraph over 1024 characters: exit 0, empty stderr, and a well-formed
-# closing tag, so the output looks complete. Measured 2026-07-29 and reported
-# upstream as ApexMarkdown/apex#31. gfm and commonmark are unaffected.
+# apex was the first choice — already installed, pinned, and with a Quarto mode
+# that suited these repos. It lost on correctness: three separate silent
+# content-loss bugs on this corpus, reported as ApexMarkdown/apex#31.
 #
-# iv-docs writes long unwrapped paragraphs and was losing whole sentences on
-# several pages. Only a word-level diff against a known-good render (see
-# tests/sitediff.py) makes it visible — which is why that harness exists.
+#   1. paragraphs over 1024 chars truncated (unified/quarto/mmd/kramdown)
+#   2. a list item + a table + a later `::` makes the table vanish (unified/quarto)
+#   3. a heading ending in `[...]` loses that text; with
+#      --no-relaxed-tables --no-sup-sub together, the heading disappears entirely
 #
-# gfm also sidesteps a second unified/quarto bug: a list item, a table, and a
-# later line containing `::` makes the table vanish entirely.
+# There is no apex mode that avoids all three. Every one exits 0, writes nothing
+# to stderr, and emits well-formed HTML, so only tests/sitediff.py's word-level
+# comparison against a Quarto render made them visible.
 #
-# What gfm costs: straight quotes instead of curly, and Pandoc fenced divs /
-# callouts render as literal text. No site here uses those (the fleet's only
-# fenced div is on lundstedt.us, which stays on Quarto). sitediff.py normalises
-# typography so the quote difference does not mask real regressions.
+# lowdown is correct on all three, is ~268 KB against apex's 1.2 MB, and ships in
+# Ubuntu (24.04: 1.1.0-1) so apt owns its security updates instead of us pinning
+# and checksumming another binary.
 #
-# --no-sup-sub: apex reads MultiMarkdown ~sub~/^sup^ by default, so a literal
-# "~150-line" became <sub>150-line</sub>, swallowing text to the next tilde.
-# --no-relaxed-tables: keeps the GFM separator row producing <thead>.
-APEX_BASE = ["apex", "--no-relaxed-tables", "--no-sup-sub"]
-
-# apex gets exactly one typographic case backwards: an apostrophe immediately
-# after inline code renders as an OPENING quote — `close()`'s becomes
-# <code>close()</code>‘s where pandoc/Quarto give ’s. Plain `don't` is correct,
-# so it is specific to a post-</code> apostrophe.
-#
-# Fixed here rather than with --no-smart. Disabling smart typography removes the
-# wrong quote but replaces every curly quote on the site with a straight one,
-# which took the measured divergence from Quarto's output from 0.30% to 2.73% —
-# noise that would mask a real regression in the next comparison. A targeted
-# substitution keeps the diff meaningful. Drop it if apex fixes the case.
-APEX_MODE = "gfm"
-SMART_QUOTE_FIXES = [("</code>\u2018", "</code>\u2019")]
+# What it costs: Pandoc fenced divs and callouts render as literal text. No site
+# here uses them — the fleet's only fenced div is on lundstedt.us, which stays on
+# Quarto. lowdown also leaves quotes straight rather than curly; sitediff.py
+# normalises typography so that difference cannot mask a real regression.
+RENDERER = ["lowdown", "--parse-no-metadata"]
 
 
 def render_fragment(md_text: str) -> str:
-    """apex, reading stdin. Fails loudly: a silently empty page is worse than a stop."""
-    r = subprocess.run(APEX_BASE + ["-m", APEX_MODE], input=md_text,
-                       capture_output=True, text=True)
+    """Render one page to an HTML fragment. Fails loudly — a silently empty
+    page is worse than a stop, which is the whole lesson of apex#31."""
+    r = subprocess.run(RENDERER, input=md_text, capture_output=True, text=True)
     if r.returncode != 0:
-        raise RuntimeError(f"apex failed: {r.stderr.strip()[:300]}")
-    out = r.stdout
-    for bad, good in SMART_QUOTE_FIXES:
-        out = out.replace(bad, good)
-    return escape_mermaid(out)
+        raise RuntimeError(f"lowdown failed: {r.stderr.strip()[:300]}")
+    return escape_mermaid(r.stdout)
 
 
 def escape_mermaid(out: str) -> str:
     """Re-escape mermaid block contents so the diagram source survives the DOM.
 
     mermaid.js reads `el.textContent`, so any markup inside the block must be
-    ESCAPED text, not real elements. apex emits it raw: gitlake's diagrams use
-    `A["staging branch<br/>of the mount"]` for node line breaks, and apex
-    produced a literal <br/> — the browser turns that into a BR element and
-    textContent drops it, silently flattening every multi-line node label.
+    ESCAPED text, not real elements. gitlake's diagrams use
+    `A["staging branch<br/>of the mount"]` for node line breaks; a renderer that
+    passes that through raw makes the browser build a BR element, and
+    textContent then drops it, silently flattening every multi-line node label.
     Quarto emits &lt;br/&gt; and renders correctly.
 
-    apex is also inconsistent about it (`-->` came back as `--&gt;` while
-    `<br/>` did not), so this unescapes first and re-escapes from scratch rather
-    than trying to patch selectively.
+    Renderers are inconsistent about which characters they escape inside a
+    fence, so this unescapes first and re-escapes from scratch rather than
+    trying to patch selectively.
     """
     def fix(m: re.Match) -> str:
         open_tag, inner = m.group(1), m.group(2)
         inner = re.sub(r"</?code[^>]*>", "", inner)      # apex sometimes wraps in <code>
         return open_tag + html.escape(html.unescape(inner), quote=False) + "</pre>"
 
-    return re.sub(r'(<pre[^>]*mermaid[^>]*>)(.*?)</pre>', fix, out, flags=re.S)
+    out = re.sub(r'(<pre[^>]*mermaid[^>]*>)(.*?)</pre>', fix, out, flags=re.S)
+    # lowdown emits ```mermaid as <pre><code class="language-mermaid">.
+    return re.sub(r'(<pre>)(<code class="language-mermaid">.*?)</pre>', fix, out, flags=re.S)
 
 
 def rewrite_links(body: str, depth: int) -> str:
@@ -364,7 +351,7 @@ def build_nav(pages: list[tuple[str, str]], current: str, root_prefix: str) -> s
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Render a markdown repo to _site with apex.")
+    ap = argparse.ArgumentParser(description="Render a markdown repo to _site with lowdown.")
     ap.add_argument("repo", nargs="?", default=".")
     ap.add_argument("--title", default=None, help="site title (default: repo directory name)")
     ap.add_argument("--out", default="_site")
@@ -374,21 +361,16 @@ def main() -> int:
     ap.add_argument("--after-body", action="append", default=[],
                     help=f"preset ({', '.join(AFTER_BODY_PRESETS)}) or a file path")
     ap.add_argument("--head", default=None, help="file of extra <head> HTML")
-    ap.add_argument("--apex-mode", default="gfm", choices=["gfm", "quarto", "unified", "commonmark", "mmd", "kramdown"],
-                    help="apex processor mode (default gfm; escape hatch only — see the note above)")
     ap.add_argument("--no-md-twins", action="store_true",
                     help="skip copying sources next to the HTML")
     args = ap.parse_args()
-
-    global APEX_MODE
-    APEX_MODE = args.apex_mode
 
     root = Path(args.repo).resolve()
     if not root.is_dir():
         print(f"render-md-site: not a directory: {root}", file=sys.stderr)
         return 2
-    if shutil.which("apex") is None:
-        print("render-md-site: apex not on PATH (provisioned by iv-image)", file=sys.stderr)
+    if shutil.which(RENDERER[0]) is None:
+        print(f"render-md-site: {RENDERER[0]} not on PATH (provisioned by iv-image)", file=sys.stderr)
         return 1
 
     site_title = args.title or root.name
