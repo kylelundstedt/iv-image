@@ -184,11 +184,36 @@ def strip_frontmatter(text: str) -> tuple[str, str | None]:
 # Kramdown-style relaxed tables, where a GFM separator row is consumed as data
 # and the header row comes out as <td> inside <tbody> with no <thead>. Measured
 # 2026-07-29 — the default silently degrades every table on the site.
-# --no-sup-sub: apex reads MultiMarkdown ~sub~ / ^sup^ by default, so the
-# literal "~150-line" in gitlake's index became <sub>150-line</sub> — content
-# corruption, and it would swallow text up to the next tilde. Quarto renders it
-# literally; this matches that.
-APEX = ["apex", "-m", "quarto", "--no-relaxed-tables", "--no-sup-sub"]
+# apex mode is selectable because neither choice is free.
+#
+# `gfm` is the DEFAULT here, for correctness. apex's quarto/unified mode loses
+# tables outright in a case reduced to nine lines on 2026-07-29:
+#
+#     - **Item.** Some text here.
+#
+#     Intro:
+#
+#     | A | B |
+#     | --- | --- |
+#     | 1 | 2 |
+#
+#     The relationship is **WAP : table writes :: AVE : executions** — same shape.
+#
+# -> 0 tables. Needs all three: a list item, an intervening table, and a later
+# `::`. Remove any one, or replace `::` with anything else, and the table
+# returns. --no-divs / --no-spans / --no-per-cell-alignment do NOT help, so it
+# is not the fenced-div parser. `-m gfm` and lowdown both render it correctly.
+# This silently dropped 2 of 4 tables on gitlake's ave_methodology page.
+#
+# The cost of `gfm`: Pandoc fenced divs and callouts render as literal text.
+# gitlake does not use them (its `:::` are mermaid node styling), but iv-docs
+# does — so that site must pass `--apex-mode quarto` and be diffed with
+# tests/sitediff.py before anyone trusts the output.
+#
+# --no-sup-sub: apex reads MultiMarkdown ~sub~/^sup^ by default, so a literal
+# "~150-line" became <sub>150-line</sub>, swallowing text to the next tilde.
+# Quarto renders it literally; this matches that.
+APEX_BASE = ["apex", "--no-relaxed-tables", "--no-sup-sub"]
 
 # apex gets exactly one typographic case backwards: an apostrophe immediately
 # after inline code renders as an OPENING quote — `close()`'s becomes
@@ -200,12 +225,14 @@ APEX = ["apex", "-m", "quarto", "--no-relaxed-tables", "--no-sup-sub"]
 # which took the measured divergence from Quarto's output from 0.30% to 2.73% —
 # noise that would mask a real regression in the next comparison. A targeted
 # substitution keeps the diff meaningful. Drop it if apex fixes the case.
+APEX_MODE = "gfm"
 SMART_QUOTE_FIXES = [("</code>\u2018", "</code>\u2019")]
 
 
 def render_fragment(md_text: str) -> str:
     """apex, reading stdin. Fails loudly: a silently empty page is worse than a stop."""
-    r = subprocess.run(APEX, input=md_text, capture_output=True, text=True)
+    r = subprocess.run(APEX_BASE + ["-m", APEX_MODE], input=md_text,
+                       capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"apex failed: {r.stderr.strip()[:300]}")
     out = r.stdout
@@ -314,9 +341,14 @@ def main() -> int:
     ap.add_argument("--after-body", action="append", default=[],
                     help=f"preset ({', '.join(AFTER_BODY_PRESETS)}) or a file path")
     ap.add_argument("--head", default=None, help="file of extra <head> HTML")
+    ap.add_argument("--apex-mode", default="gfm", choices=["gfm", "quarto", "unified", "commonmark", "mmd", "kramdown"],
+                    help="apex processor mode (default gfm; 'quarto' adds fenced divs/callouts but drops some tables)")
     ap.add_argument("--no-md-twins", action="store_true",
                     help="skip copying sources next to the HTML")
     args = ap.parse_args()
+
+    global APEX_MODE
+    APEX_MODE = args.apex_mode
 
     root = Path(args.repo).resolve()
     if not root.is_dir():

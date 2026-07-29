@@ -19,6 +19,17 @@ from pathlib import Path
 
 SKIP_TAGS = {"script", "style", "nav", "aside", "header", "footer"}
 
+# Typography is a KNOWN, intentional difference, not a regression: Quarto/pandoc
+# curl quotes and collapse "..." to an ellipsis; apex's gfm mode leaves them
+# straight. Comparing raw text made every page differ by ~3.6%, which would bury
+# a genuine dropped paragraph in noise. Normalise both sides so what remains is
+# real.
+TYPO = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
+
+
+def normalise(t: str) -> str:
+    return t.translate(TYPO).replace("\u2026", "...")
+
 
 class Extract(HTMLParser):
     """Text + structure from the main content region, ignoring site chrome."""
@@ -61,7 +72,7 @@ class Extract(HTMLParser):
         if tag in SKIP_TAGS and self.depth_skip:
             self.depth_skip -= 1
         if tag in ("h1", "h2", "h3", "h4") and self._grab_heading:
-            self.headings.append(" ".join("".join(self._heading_buf).split()))
+            self.headings.append(normalise(" ".join("".join(self._heading_buf).split())))
             self._grab_heading = False
         if tag == "main" and self.in_main and self.depth == self.main_depth:
             self.in_main = False
@@ -74,7 +85,7 @@ class Extract(HTMLParser):
                 self._heading_buf.append(data)
 
     def text(self) -> str:
-        return " ".join("".join(self.parts).split())
+        return normalise(" ".join("".join(self.parts).split()))
 
 
 def parse(path: Path) -> Extract:
