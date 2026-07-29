@@ -228,6 +228,32 @@ sudo install -m 0755 "$IV_REPO/bin/agentsview-source-daemon" /usr/local/bin/agen
 
 # Install the source-daemon template unconditionally, but activate only after
 # the separate network-identity and local-secret prerequisites are explicit.
+# `systemctl --user` over a non-interactive SSH needs to be told where the user
+# bus is. exeuntu sets DBUS_SESSION_BUS_ADDRESS as an image ENV so it is
+# inherited and this Just Works; a minimal base need not, and then EVERY
+# `systemctl --user` call fails with "Failed to connect to bus: No medium
+# found". Because the disable branch below had a guarded `disable` followed by
+# an UNGUARDED `daemon-reload`, `set -e` aborted the whole provision there —
+# after the binaries were installed but before the agent config, MCP servers,
+# skills and the lock file. A partial provision that reported success only in
+# the exit code, which nothing was reading. Found 2026-07-29 on an exeslim-dev
+# canary; latent on any first provision where the user manager has no bus in
+# the environment.
+#
+# uctl: supply the address if it is missing, and never let a user-bus problem
+# take down a provision run — this whole section is fail-closed by design, so
+# failing to disable an already-absent unit must not be fatal.
+uctl() {
+  local rc=0
+  XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+  DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}" \
+    systemctl --user "$@" || rc=$?
+  if (( rc != 0 )); then
+    echo "  note: systemctl --user $1 failed (rc=$rc); user bus unavailable" >&2
+  fi
+  return 0
+}
+
 echo "== AgentsView source service =="
 mkdir -p "$HOME/.config/systemd/user"
 install -m 0644 "$IV_REPO/systemd/agentsview-source.service" \
@@ -238,12 +264,12 @@ if [[ -s $SOURCE_ENV ]] \
     && tailscale ip -4 >/dev/null 2>&1; then
   chmod 600 "$SOURCE_ENV"
   sudo loginctl enable-linger "$USER"
-  systemctl --user daemon-reload
-  systemctl --user enable --now agentsview-source.service
+  uctl daemon-reload
+  uctl enable --now agentsview-source.service
   echo "AgentsView source enabled (tailnet + per-host token present)"
 else
-  systemctl --user disable --now agentsview-source.service >/dev/null 2>&1 || true
-  systemctl --user daemon-reload
+  uctl disable --now agentsview-source.service >/dev/null 2>&1 || true
+  uctl daemon-reload
   echo "AgentsView source disabled; requires tailnet reachability and $SOURCE_ENV"
 fi
 
