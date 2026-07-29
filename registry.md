@@ -29,8 +29,7 @@ If `iv-registry` is destroyed, recreate it like any other IV VM (see
 
 ```bash
 ssh exe.dev new --name=iv-registry --tag=iv
-ssh exe.dev integrations attach github-kylelundstedt-iv-image vm:iv-registry
-ssh iv-registry.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/kylelundstedt/iv-image.git ~/iv-image \
+ssh iv-registry.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
   && ~/iv-image/provision-iv.sh \
   && provision-docsite ~/iv-image"
 ```

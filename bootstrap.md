@@ -9,7 +9,7 @@ its own ownership — they are orchestrated in order, not merged into one script
 | ---- | --------------------------------------------- | ------------------------------------------ |
 | 1    | Create a **stock exeuntu** VM (keeps Shelley) | exe.dev                                    |
 | 2    | Join the tailnet                              | `join-tailnet` skill                       |
-| 3    | Install the **team software layer**           | `provision-iv.sh` (this repo)              |
+| 3    | Install the **team software layer**           | `provision-iv.sh` (this repo, public)      |
 | 4    | Clone the work repo + serve its doc site      | repo integration + `provision-docsite`     |
 | 5    | _(optional)_ Personal overlay                 | your dotfiles `install.sh` (separate repo) |
 
@@ -37,8 +37,7 @@ See `tailnet.md`.
 Pin by checking out a tag/sha of this repo before running the script.
 
 ```bash
-ssh exe.dev integrations attach github-kylelundstedt-iv-image vm:<vm>
-ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/kylelundstedt/iv-image.git ~/iv-image \
+ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
   && git -C ~/iv-image checkout <tag-or-sha> \
   && ~/iv-image/provision-iv.sh"
 ```

@@ -18,11 +18,9 @@ provisioned by running `provision-iv.sh` from this repo at a pinned tag/sha.
 # 1. Create a VM from stock exeuntu (default image — NO --image flag)
 ssh exe.dev new --name=<vm> --tag=iv
 
-# 2. Attach the repo integration so the VM can clone this repo
-ssh exe.dev integrations attach github-kylelundstedt-iv-image vm:<vm>
-
-# 3. Clone at a pinned tag/sha and provision
-ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/kylelundstedt/iv-image.git ~/iv-image \
+# 2. Clone at a pinned tag/sha and provision. This repo is public: no
+#    integration, no credential, no proxy host.
+ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
   && git -C ~/iv-image checkout <tag-or-sha> && ~/iv-image/provision-iv.sh"
 ```
 

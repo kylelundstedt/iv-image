@@ -12,11 +12,9 @@ tag/sha:
 # 1. Create a VM from stock exeuntu (default image — NO --image flag)
 ssh exe.dev new --name=<vm> --tag=iv
 
-# 2. Attach the repo integration so the VM can clone this repo
-ssh exe.dev integrations attach github-kylelundstedt-iv-image vm:<vm>
-
-# 3. Clone at a pinned tag/sha and provision
-ssh <vm>.exe.xyz "git clone https://github-kylelundstedt-iv-image.int.exe.xyz/kylelundstedt/iv-image.git ~/iv-image \
+# 2. Clone at a pinned tag/sha and provision. This repo is public: no
+#    integration, no credential, no proxy host.
+ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
   && git -C ~/iv-image checkout <tag-or-sha> && ~/iv-image/provision-iv.sh"
 ```
 
@@ -84,7 +82,11 @@ ssh <vm>.exe.xyz "git clone https://github-<owner>-<repo>.int.exe.xyz/<org>/<rep
 The `.int.exe.xyz` host is the VM-side proxy endpoint; exe.dev injects the real
 GitHub token at the proxy, so no PAT or SSH key is stored on the VM. The
 integration name and the `int.exe.xyz` subdomain match (e.g. integration
-`github-kylelundstedt-iv-image` → `github-kylelundstedt-iv-image.int.exe.xyz`).
+`github-kylelundstedt-gitlake` → `github-kylelundstedt-gitlake.int.exe.xyz`).
+
+This applies to **private** repos only. The two repos a VM needs to provision
+itself — this one and `dotfiles` — are public and clone straight from
+github.com, so a fresh dev VM needs no repo integration at creation.
 
 ## Provisioning a doc site
 
