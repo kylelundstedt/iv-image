@@ -166,3 +166,14 @@ that architecture.
   there is no version/digest selector on `ssh exe.dev new`. Instead,
   `provision-iv.sh` records it in `~/iv-provision.lock` along with the installed
   tool versions, Shelley version, skills count, and provisioning Git SHA.
+
+## License
+
+The IV provisioning layer — `provision-iv.sh`, `bin/`, `tests/`, `systemd/`,
+`agent/`, `.claude/skills/`, and the documentation — is MIT licensed; see
+`LICENSE`.
+
+`skills/` vendors third-party agent skills that are **not** covered by that
+grant. Each retains its upstream license, declared in the `license:` field of
+its `SKILL.md` frontmatter where upstream sets one. Redistribution of any
+vendored skill is governed by its own terms, not by this repo's.

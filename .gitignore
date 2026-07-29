@@ -1,5 +1,10 @@
 # pinned exeuntu source from the retired image workflow is not vendored
 exeuntu/
+# third-party skill trees installed locally, never vendored into this repo:
+# herdr ships a full source checkout (vendor/libghostty-vt, portable-pty) and
+# mviz ships sample reports. Both carry their own licenses.
+skills/herdr/
+skills/mviz/
 # generated/local output
 *.log
 
