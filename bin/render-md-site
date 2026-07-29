@@ -140,15 +140,27 @@ def matches(rel: str, patterns: list[str]) -> bool:
     return False
 
 
-def discover(root: Path, includes: list[str], excludes: list[str]) -> list[Path]:
+def discover(root: Path, includes: list[str], user_excludes: list[str],
+             default_excludes: list[str]) -> list[Path]:
+    """An explicit --include beats a DEFAULT exclude; a user --exclude beats both.
+
+    ave-adapters' _quarto.yml renders README.md and TODO.md as site content,
+    which the defaults here exclude as repo hygiene. Applying defaults to an
+    explicitly named file would silently drop two thirds of that site — so when
+    --include is given it means "render exactly these".
+    """
     out = []
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix not in (".md", ".qmd"):
             continue
         rel = path.relative_to(root).as_posix()
-        if matches(rel, excludes):
+        if matches(rel, user_excludes):
             continue
-        if includes and not matches(rel, includes):
+        if includes:
+            if matches(rel, includes):
+                out.append(path)
+            continue
+        if matches(rel, default_excludes):
             continue
         out.append(path)
     return out
@@ -172,7 +184,23 @@ def strip_frontmatter(text: str) -> tuple[str, str | None]:
 # Kramdown-style relaxed tables, where a GFM separator row is consumed as data
 # and the header row comes out as <td> inside <tbody> with no <thead>. Measured
 # 2026-07-29 — the default silently degrades every table on the site.
-APEX = ["apex", "-m", "quarto", "--no-relaxed-tables"]
+# --no-sup-sub: apex reads MultiMarkdown ~sub~ / ^sup^ by default, so the
+# literal "~150-line" in gitlake's index became <sub>150-line</sub> — content
+# corruption, and it would swallow text up to the next tilde. Quarto renders it
+# literally; this matches that.
+APEX = ["apex", "-m", "quarto", "--no-relaxed-tables", "--no-sup-sub"]
+
+# apex gets exactly one typographic case backwards: an apostrophe immediately
+# after inline code renders as an OPENING quote — `close()`'s becomes
+# <code>close()</code>‘s where pandoc/Quarto give ’s. Plain `don't` is correct,
+# so it is specific to a post-</code> apostrophe.
+#
+# Fixed here rather than with --no-smart. Disabling smart typography removes the
+# wrong quote but replaces every curly quote on the site with a straight one,
+# which took the measured divergence from Quarto's output from 0.30% to 2.73% —
+# noise that would mask a real regression in the next comparison. A targeted
+# substitution keeps the diff meaningful. Drop it if apex fixes the case.
+SMART_QUOTE_FIXES = [("</code>\u2018", "</code>\u2019")]
 
 
 def render_fragment(md_text: str) -> str:
@@ -180,7 +208,32 @@ def render_fragment(md_text: str) -> str:
     r = subprocess.run(APEX, input=md_text, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"apex failed: {r.stderr.strip()[:300]}")
-    return r.stdout
+    out = r.stdout
+    for bad, good in SMART_QUOTE_FIXES:
+        out = out.replace(bad, good)
+    return escape_mermaid(out)
+
+
+def escape_mermaid(out: str) -> str:
+    """Re-escape mermaid block contents so the diagram source survives the DOM.
+
+    mermaid.js reads `el.textContent`, so any markup inside the block must be
+    ESCAPED text, not real elements. apex emits it raw: gitlake's diagrams use
+    `A["staging branch<br/>of the mount"]` for node line breaks, and apex
+    produced a literal <br/> — the browser turns that into a BR element and
+    textContent drops it, silently flattening every multi-line node label.
+    Quarto emits &lt;br/&gt; and renders correctly.
+
+    apex is also inconsistent about it (`-->` came back as `--&gt;` while
+    `<br/>` did not), so this unescapes first and re-escapes from scratch rather
+    than trying to patch selectively.
+    """
+    def fix(m: re.Match) -> str:
+        open_tag, inner = m.group(1), m.group(2)
+        inner = re.sub(r"</?code[^>]*>", "", inner)      # apex sometimes wraps in <code>
+        return open_tag + html.escape(html.unescape(inner), quote=False) + "</pre>"
+
+    return re.sub(r'(<pre[^>]*mermaid[^>]*>)(.*?)</pre>', fix, out, flags=re.S)
 
 
 def rewrite_links(body: str, depth: int) -> str:
@@ -274,10 +327,10 @@ def main() -> int:
         return 1
 
     site_title = args.title or root.name
-    excludes = list(args.exclude) + ([] if args.no_default_excludes else DEFAULT_EXCLUDES)
-    excludes.append(f"{args.out}/**")
+    user_excludes = list(args.exclude) + [f"{args.out}/**", "_site/**"]
+    default_excludes = [] if args.no_default_excludes else DEFAULT_EXCLUDES
 
-    sources = discover(root, args.include, excludes)
+    sources = discover(root, args.include, user_excludes, default_excludes)
     if not sources:
         print("render-md-site: no markdown found after include/exclude", file=sys.stderr)
         return 1
