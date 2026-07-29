@@ -66,8 +66,13 @@ mkdir -p "$OUT"
 cp -a "$HOME/.agents/skills/." "$OUT/"
 
 # --- mcp: generate agent/mcp-servers.json from the team rows' vm-urls -------
+# Rows whose vm-url is `-` are SKIPPED: the manifest defines `-` as "not
+# registered on VMs". Without this filter the row was emitted verbatim as
+# {"url": "-"}, which is worse than omitting it — setup-mcp.sh would register a
+# server pointing at a literal dash. Hit 2026-07-28 when github-work moved to
+# `-` after `github-mcp-work` was detached from auto:all.
 manifest_rows "$MCP_MANIFEST" \
-  | awk -F'|' '$2 ~ /team/ {gsub(/^ +| +$/,"",$1); gsub(/^ +| +$/,"",$3); print $1"\t"$3}' \
+  | awk -F'|' '$2 ~ /team/ {gsub(/^ +| +$/,"",$1); gsub(/^ +| +$/,"",$3); if ($3 != "-" && $3 != "") print $1"\t"$3}' \
   | jq -Rn 'reduce (inputs | split("\t")) as $r ({}; . + {($r[0]): {type: "http", url: $r[1]}})' \
   > "$SERVERS_OUT"
 
