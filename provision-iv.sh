@@ -259,7 +259,7 @@ install_agentsview
 install_apex
 
 echo "== doc-site and cloud helpers =="
-for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli; do
+for tool in render-site render-md-site provision-docsite gen-llms-txt shot install-cloud-cli; do
   sudo install -m 0755 "$IV_REPO/bin/$tool" "/usr/local/bin/$tool"
 done
 sudo install -m 0755 "$IV_REPO/bin/agentsview-source-daemon" /usr/local/bin/agentsview-source-daemon

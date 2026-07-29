@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""render-md-site [repo] — render a markdown repo to <repo>/_site with apex.
+
+The lightweight replacement for `render-site` (Quarto). Quarto is 423 MB and
+none of these sites use a single one of its computational features — no r,
+python, julia or ojs blocks anywhere on the fleet. It was a static site
+generator for plain markdown, at ~350x the size of one.
+
+Design rule: FOLLOW THE REPO. The output tree mirrors the source tree exactly,
+so a/b/c.md becomes _site/a/b/c.html and every relative link keeps working.
+That rules out mdBook (wants SUMMARY.md), Hugo and Zola (want their own
+content/ layout) — all of which would restructure the repo to suit themselves.
+
+apex does the markdown; this does the site. apex emits an HTML *fragment*
+(documented: "Emit an HTML fragment for another program or template to
+consume"), which this wraps in a template with sidebar navigation, a per-page
+table of contents, and any extra head/body HTML the site needs.
+
+Not implemented, and the one real loss against Quarto: full-text search. The
+sidebar and TOC replace Quarto's navigation; search would want a JSON index and
+a few lines of JS, which is a separate piece of work.
+
+Usage:
+  render-md-site                       # render $PWD
+  render-md-site ~/gitlake --title GitLake --exclude 'agent_docs/**'
+  render-md-site --after-body mermaid  # inject the mermaid initialiser
+"""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import html
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# Excluded everywhere unless --no-default-excludes. These are agent and
+# repo-hygiene files that are never site content; every _quarto.yml on the
+# fleet excludes the same set by hand.
+DEFAULT_EXCLUDES = [
+    "_site/**", ".quarto/**", ".git/**", "node_modules/**", ".venv/**",
+    "AGENTS.md", "CLAUDE.md", "TODO.md", "CHANGELOG.md", ".github/**",
+    # Quarto ignores README.md in a project by default, and every site here
+    # relies on that: README is repo-facing, index.md is site-facing. Rendering
+    # both produces two near-duplicate landing pages.
+    "README.md", "**/README.md",
+]
+
+# Mermaid, as a named preset rather than a pasted <script>: gitlake's
+# _quarto.yml carried this verbatim under include-after-body, and copying such
+# blobs between repos is how they rot. Kept byte-compatible with what that site
+# already served.
+AFTER_BODY_PRESETS = {
+    "mermaid": """<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+  let i = 0;
+  // apex -m quarto emits ```mermaid as <pre lang="mermaid"><code>.
+  for (const el of document.querySelectorAll('pre[lang="mermaid"] > code, pre.mermaid, div.mermaid, pre > code.language-mermaid')) {
+    const host = el.tagName === 'CODE' ? el.parentElement : el;
+    try {
+      const { svg } = await mermaid.render('mmd-' + (i++), el.textContent.trim());
+      host.innerHTML = svg;
+    } catch (e) { console.error('mermaid render error:', e); }
+  }
+</script>""",
+}
+
+CSS = """
+:root { --fg:#1f2328; --bg:#fff; --muted:#59636e; --accent:#0969da; --border:#d1d9e0; --code-bg:#f6f8fa; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg:#e6edf3; --bg:#0d1117; --muted:#9198a1; --accent:#4493f8; --border:#3d444d; --code-bg:#151b23; }
+}
+* { box-sizing: border-box; }
+body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+       color:var(--fg); background:var(--bg); }
+.layout { display:flex; align-items:flex-start; max-width:1400px; margin:0 auto; }
+nav.sidebar { flex:0 0 260px; padding:1.5rem 1rem; border-right:1px solid var(--border);
+              position:sticky; top:0; max-height:100vh; overflow-y:auto; }
+nav.sidebar .brand { font-weight:600; font-size:1.1rem; display:block; margin-bottom:1rem;
+                     color:var(--fg); text-decoration:none; }
+nav.sidebar ul { list-style:none; margin:0; padding:0 0 0 .5rem; }
+nav.sidebar li { margin:.15rem 0; }
+nav.sidebar a { color:var(--muted); text-decoration:none; font-size:.9rem; }
+nav.sidebar a:hover { color:var(--accent); }
+nav.sidebar a.current { color:var(--accent); font-weight:600; }
+nav.sidebar .section { font-weight:600; color:var(--fg); font-size:.85rem;
+                       text-transform:uppercase; letter-spacing:.03em; margin-top:1rem; }
+main { flex:1 1 auto; min-width:0; padding:2rem 2.5rem; max-width:52rem; }
+aside.toc { flex:0 0 200px; padding:2rem 1rem; position:sticky; top:0; max-height:100vh; overflow-y:auto; }
+aside.toc ul { list-style:none; margin:0; padding:0; }
+aside.toc a { color:var(--muted); text-decoration:none; font-size:.82rem; display:block; margin:.25rem 0; }
+aside.toc a:hover { color:var(--accent); }
+aside.toc .h3 { padding-left:.75rem; }
+a { color:var(--accent); }
+pre { background:var(--code-bg); padding:.85rem 1rem; overflow-x:auto; border-radius:6px;
+      border:1px solid var(--border); }
+code { background:var(--code-bg); padding:.15em .35em; border-radius:4px; font-size:.9em; }
+pre code { background:none; padding:0; }
+table { border-collapse:collapse; width:100%; overflow-x:auto; display:block; }
+th,td { border:1px solid var(--border); padding:.4rem .6rem; text-align:left; }
+th { background:var(--code-bg); }
+blockquote { border-left:3px solid var(--border); margin-left:0; padding-left:1rem; color:var(--muted); }
+img { max-width:100%; }
+h1,h2,h3 { line-height:1.25; }
+@media (max-width: 1000px) { aside.toc { display:none; } }
+@media (max-width: 700px) { .layout { flex-direction:column; } nav.sidebar { position:static; max-height:none;
+  flex:1 1 auto; width:100%; border-right:none; border-bottom:1px solid var(--border); } main { padding:1.25rem; } }
+"""
+
+PAGE = """<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>{css}</style>
+{head_extra}
+</head><body>
+<div class="layout">
+<nav class="sidebar"><a class="brand" href="{root}index.html">{site_title}</a>{nav}</nav>
+<main>{body}</main>
+{toc}
+</div>
+{after_body}
+</body></html>
+"""
+
+
+def matches(rel: str, patterns: list[str]) -> bool:
+    """fnmatch, but `dir/**` also matches `dir/a/b.md` — which plain fnmatch does not."""
+    for p in patterns:
+        if fnmatch.fnmatch(rel, p):
+            return True
+        if p.endswith("/**") and (rel == p[:-3] or rel.startswith(p[:-2])):
+            return True
+    return False
+
+
+def discover(root: Path, includes: list[str], excludes: list[str]) -> list[Path]:
+    out = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix not in (".md", ".qmd"):
+            continue
+        rel = path.relative_to(root).as_posix()
+        if matches(rel, excludes):
+            continue
+        if includes and not matches(rel, includes):
+            continue
+        out.append(path)
+    return out
+
+
+def strip_frontmatter(text: str) -> tuple[str, str | None]:
+    """Return (body, title). apex passes YAML frontmatter through as content."""
+    if not text.startswith("---"):
+        return text, None
+    end = text.find("\n---", 3)
+    if end == -1:
+        return text, None
+    fm, body = text[3:end], text[end + 4:].lstrip("\n")
+    m = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', fm, re.M)
+    return body, (m.group(1) if m else None)
+
+
+# `-m quarto` keeps Pandoc fenced divs and callouts (`::: {.callout-note}`),
+# which these repos use and which `-m gfm` renders as literal text.
+# `--no-relaxed-tables` is REQUIRED with it: quarto/unified mode enables
+# Kramdown-style relaxed tables, where a GFM separator row is consumed as data
+# and the header row comes out as <td> inside <tbody> with no <thead>. Measured
+# 2026-07-29 — the default silently degrades every table on the site.
+APEX = ["apex", "-m", "quarto", "--no-relaxed-tables"]
+
+
+def render_fragment(md_text: str) -> str:
+    """apex, reading stdin. Fails loudly: a silently empty page is worse than a stop."""
+    r = subprocess.run(APEX, input=md_text, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"apex failed: {r.stderr.strip()[:300]}")
+    return r.stdout
+
+
+def rewrite_links(body: str, depth: int) -> str:
+    """`href="x.md"` -> `href="x.html"`, leaving absolute and external URLs alone.
+
+    This is the whole reason the output tree mirrors the source tree: relative
+    links keep resolving without a link database or a base-url rewrite pass.
+    """
+    def sub(m: re.Match) -> str:
+        url = m.group(1)
+        if re.match(r"^(https?:|mailto:|#|/)", url):
+            return m.group(0)
+        target, _, frag = url.partition("#")
+        if target.endswith((".md", ".qmd")):
+            target = target.rsplit(".", 1)[0] + ".html"
+        return f'href="{target}{"#" + frag if frag else ""}"'
+    return re.sub(r'href="([^"]+)"', sub, body)
+
+
+def extract_toc(body: str) -> tuple[str, str]:
+    """Add ids to h2/h3 and build the TOC from them."""
+    items = []
+    seen: dict[str, int] = {}
+
+    def sub(m: re.Match) -> str:
+        level, attrs, inner = m.group(1), m.group(2), m.group(3)
+        text = re.sub(r"<[^>]+>", "", inner).strip()
+        # apex already emits ids (--id-format gfm). Reuse them so the TOC links
+        # match the anchors readers get from GitHub, instead of inventing a
+        # second scheme that silently disagrees.
+        existing = re.search(r'\bid="([^"]+)"', attrs)
+        if existing:
+            slug = existing.group(1)
+            items.append((level, slug, text))
+            return m.group(0)
+        slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "section"
+        seen[slug] = seen.get(slug, 0) + 1
+        if seen[slug] > 1:
+            slug = f"{slug}-{seen[slug]}"
+        items.append((level, slug, text))
+        return f'<h{level}{attrs} id="{slug}">{inner}</h{level}>'
+
+    body = re.sub(r"<h([23])([^>]*)>(.*?)</h\1>", sub, body, flags=re.S)
+    if len(items) < 2:
+        return body, ""
+    links = "".join(
+        f'<a class="h{lvl}" href="#{slug}">{html.escape(txt)}</a>'
+        for lvl, slug, txt in items
+    )
+    return body, f'<aside class="toc"><ul>{links}</ul></aside>'
+
+
+def build_nav(pages: list[tuple[str, str]], current: str, root_prefix: str) -> str:
+    """Sidebar grouped by directory — the repo's own structure, not a hand-kept list."""
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for href, title in pages:
+        groups.setdefault(str(Path(href).parent) if "/" in href else "", []).append((href, title))
+    out = []
+    for section in sorted(groups, key=lambda s: (s != "", s)):
+        if section:
+            out.append(f'<div class="section">{html.escape(section)}</div>')
+        out.append("<ul>")
+        for href, title in sorted(groups[section], key=lambda p: (not p[0].endswith("index.html"), p[0])):
+            cls = ' class="current"' if href == current else ""
+            out.append(f'<li><a{cls} href="{root_prefix}{href}">{html.escape(title)}</a></li>')
+        out.append("</ul>")
+    return "".join(out)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Render a markdown repo to _site with apex.")
+    ap.add_argument("repo", nargs="?", default=".")
+    ap.add_argument("--title", default=None, help="site title (default: repo directory name)")
+    ap.add_argument("--out", default="_site")
+    ap.add_argument("--include", action="append", default=[], help="glob; repeatable")
+    ap.add_argument("--exclude", action="append", default=[], help="glob; repeatable")
+    ap.add_argument("--no-default-excludes", action="store_true")
+    ap.add_argument("--after-body", action="append", default=[],
+                    help=f"preset ({', '.join(AFTER_BODY_PRESETS)}) or a file path")
+    ap.add_argument("--head", default=None, help="file of extra <head> HTML")
+    ap.add_argument("--no-md-twins", action="store_true",
+                    help="skip copying sources next to the HTML")
+    args = ap.parse_args()
+
+    root = Path(args.repo).resolve()
+    if not root.is_dir():
+        print(f"render-md-site: not a directory: {root}", file=sys.stderr)
+        return 2
+    if shutil.which("apex") is None:
+        print("render-md-site: apex not on PATH (provisioned by iv-image)", file=sys.stderr)
+        return 1
+
+    site_title = args.title or root.name
+    excludes = list(args.exclude) + ([] if args.no_default_excludes else DEFAULT_EXCLUDES)
+    excludes.append(f"{args.out}/**")
+
+    sources = discover(root, args.include, excludes)
+    if not sources:
+        print("render-md-site: no markdown found after include/exclude", file=sys.stderr)
+        return 1
+
+    after_body = "\n".join(
+        AFTER_BODY_PRESETS[a] if a in AFTER_BODY_PRESETS else Path(a).read_text()
+        for a in args.after_body
+    )
+    head_extra = Path(args.head).read_text() if args.head else ""
+
+    # Pass 1: titles, so every page's sidebar can name every other page.
+    entries = []
+    for src in sources:
+        rel = src.relative_to(root)
+        text = src.read_text(encoding="utf-8", errors="replace")
+        body_md, fm_title = strip_frontmatter(text)
+        m = re.search(r"^#\s+(.+?)\s*$", body_md, re.M)
+        title = fm_title or (m.group(1) if m else rel.stem.replace("-", " ").replace("_", " ").title())
+        entries.append((src, rel.with_suffix(".html").as_posix(), title, body_md))
+
+    nav_pages = [(href, title) for _, href, title, _ in entries]
+    out_root = root / args.out
+    if out_root.exists():
+        shutil.rmtree(out_root)
+
+    for src, href, title, body_md in entries:
+        depth = href.count("/")
+        root_prefix = "../" * depth
+        body = render_fragment(body_md)
+        body = rewrite_links(body, depth)
+        body, toc = extract_toc(body)
+        page = PAGE.format(
+            title=html.escape(f"{title} — {site_title}" if title != site_title else title),
+            site_title=html.escape(site_title),
+            css=CSS, head_extra=head_extra, after_body=after_body,
+            nav=build_nav(nav_pages, href, root_prefix),
+            body=body, toc=toc, root=root_prefix,
+        )
+        dest = out_root / href
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(page, encoding="utf-8")
+        # The markdown twin is free: the source already IS markdown, so what
+        # Quarto produced with `format: gfm` is a copy here.
+        if not args.no_md_twins:
+            shutil.copyfile(src, dest.with_suffix(src.suffix))
+
+    # index.html fallback so the site root is never a 404.
+    if not (out_root / "index.html").exists():
+        first = entries[0][1]
+        (out_root / "index.html").write_text(
+            f'<!doctype html><meta charset="utf-8">'
+            f'<meta http-equiv="refresh" content="0; url={first}">'
+            f'<a href="{first}">{html.escape(site_title)}</a>', encoding="utf-8")
+
+    print(f"rendered {len(entries)} page(s): {out_root}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
