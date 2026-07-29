@@ -29,7 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import fnmatch
+import functools
 import html
 import os
 import re
@@ -41,9 +41,18 @@ from pathlib import Path
 # Excluded everywhere unless --no-default-excludes. These are agent and
 # repo-hygiene files that are never site content; every _quarto.yml on the
 # fleet excludes the same set by hand.
+# Applied ALWAYS, even when --include names files explicitly. These are build
+# output and VCS internals; rendering them is never intended. iv-docs keeps its
+# Quarto profile output in _site-internal/ and _site-product/, and excluding
+# only "_site/**" made apex walk that previous HTML as source — 241 pages
+# instead of ~50.
+ALWAYS_EXCLUDES = [
+    "_site*/**", ".quarto/**", ".git/**", ".entire/**",
+    "node_modules/**", ".venv/**", ".github/**",
+]
+
 DEFAULT_EXCLUDES = [
-    "_site/**", ".quarto/**", ".git/**", "node_modules/**", ".venv/**",
-    "AGENTS.md", "CLAUDE.md", "TODO.md", "CHANGELOG.md", ".github/**",
+    "AGENTS.md", "CLAUDE.md", "TODO.md", "CHANGELOG.md",
     # Quarto ignores README.md in a project by default, and every site here
     # relies on that: README is repo-facing, index.md is site-facing. Rendering
     # both produces two near-duplicate landing pages.
@@ -130,11 +139,35 @@ PAGE = """<!doctype html>
 """
 
 
+@functools.lru_cache(maxsize=None)
+def _glob_re(pat: str) -> re.Pattern:
+    """Shell globstar semantics, which fnmatch does not provide.
+
+    fnmatch maps every `*` to `.*`, so `tpch/**/*.md` demands two literal
+    slashes and misses `tpch/index.md` — gitlake-examples rendered 1 page
+    instead of 6 because of exactly that. Here `**/` spans zero or more
+    directories and a single `*` stops at a slash, as in a shell.
+    """
+    i, out = 0, []
+    while i < len(pat):
+        if pat.startswith("**/", i):
+            out.append("(?:.*/)?"); i += 3
+        elif pat.startswith("**", i):
+            out.append(".*"); i += 2
+        elif pat[i] == "*":
+            out.append("[^/]*"); i += 1
+        elif pat[i] == "?":
+            out.append("[^/]"); i += 1
+        else:
+            out.append(re.escape(pat[i])); i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
 def matches(rel: str, patterns: list[str]) -> bool:
-    """fnmatch, but `dir/**` also matches `dir/a/b.md` — which plain fnmatch does not."""
     for p in patterns:
-        if fnmatch.fnmatch(rel, p):
+        if _glob_re(p).match(rel):
             return True
+        # `dir/**` also means the directory itself and everything under it.
         if p.endswith("/**") and (rel == p[:-3] or rel.startswith(p[:-2])):
             return True
     return False
@@ -154,6 +187,12 @@ def discover(root: Path, includes: list[str], user_excludes: list[str],
         if not path.is_file() or path.suffix not in (".md", ".qmd"):
             continue
         rel = path.relative_to(root).as_posix()
+        # Quarto ignores files and directories whose name begins with "_" or
+        # "." in a project render — that is how drafts/_pressure_test.md stays
+        # out of iv-docs' site without appearing in any exclude list. Same
+        # convention here, or every repo would need to name its scratch files.
+        if any(part.startswith(("_", ".")) for part in Path(rel).parts):
+            continue
         if matches(rel, user_excludes):
             continue
         if includes:
@@ -184,28 +223,29 @@ def strip_frontmatter(text: str) -> tuple[str, str | None]:
 # Kramdown-style relaxed tables, where a GFM separator row is consumed as data
 # and the header row comes out as <td> inside <tbody> with no <thead>. Measured
 # 2026-07-29 — the default silently degrades every table on the site.
-# DECIDED 2026-07-29: apex, `-m gfm`. Full stop.
+# apex, `-m gfm`.
 #
-# A fleet survey of all five sites (209 pages) found exactly ONE piece of
-# Quarto-only syntax: a single fenced div, `::: {#home-recent}`, in
-# kgl-thoughts' index.qmd. iv-docs (126 pages), gitlake-examples, gitlake and
-# ave-adapters use none. Earlier claims to the contrary were a grep counting a
-# Python string literal, Entire metadata and AWS ARNs (arn:aws:s3:::...) as
-# fenced divs.
+# gfm is not a stylistic preference — it is the only mode that does not lose
+# content. apex's unified/quarto/mmd/kramdown modes SILENTLY TRUNCATE any
+# paragraph over 1024 characters: exit 0, empty stderr, and a well-formed
+# closing tag, so the output looks complete. Measured 2026-07-29 and reported
+# upstream as ApexMarkdown/apex#31. gfm and commonmark are unaffected.
 #
-# So the source markdown gets changed in the few places that need it, rather
-# than the renderer bending to accommodate them. That makes `-m gfm` correct
-# everywhere and sidesteps the quarto-mode table bug entirely (a list + a table
-# + a later `::` silently loses the table; see git history for the repro).
+# iv-docs writes long unwrapped paragraphs and was losing whole sentences on
+# several pages. Only a word-level diff against a known-good render (see
+# tests/sitediff.py) makes it visible — which is why that harness exists.
+#
+# gfm also sidesteps a second unified/quarto bug: a list item, a table, and a
+# later line containing `::` makes the table vanish entirely.
+#
+# What gfm costs: straight quotes instead of curly, and Pandoc fenced divs /
+# callouts render as literal text. No site here uses those (the fleet's only
+# fenced div is on lundstedt.us, which stays on Quarto). sitediff.py normalises
+# typography so the quote difference does not mask real regressions.
 #
 # --no-sup-sub: apex reads MultiMarkdown ~sub~/^sup^ by default, so a literal
 # "~150-line" became <sub>150-line</sub>, swallowing text to the next tilde.
-# --no-relaxed-tables: quarto/unified mode eats the GFM separator row, emitting
-# the header as <td> with no <thead>.
-#
-# Known, accepted: a paragraph ending in ":" directly after a table is absorbed
-# as a table row. Text is present and correct, placement is wrong. One
-# paragraph on one page across the fleet. Not worth changing renderer over.
+# --no-relaxed-tables: keeps the GFM separator row producing <thead>.
 APEX_BASE = ["apex", "--no-relaxed-tables", "--no-sup-sub"]
 
 # apex gets exactly one typographic case backwards: an apostrophe immediately
@@ -352,7 +392,7 @@ def main() -> int:
         return 1
 
     site_title = args.title or root.name
-    user_excludes = list(args.exclude) + [f"{args.out}/**", "_site/**"]
+    user_excludes = list(args.exclude) + ALWAYS_EXCLUDES + [f"{args.out}/**"]
     default_excludes = [] if args.no_default_excludes else DEFAULT_EXCLUDES
 
     sources = discover(root, args.include, user_excludes, default_excludes)
