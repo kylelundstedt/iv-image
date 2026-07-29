@@ -8,7 +8,6 @@ set -euo pipefail
 
 DUCKDB_VERSION=1.5.3
 QUARTO_VERSION=1.9.38
-AWS_CLI_VERSION=2.35.7
 TIGRIS_VERSION=3.1.0
 RCLONE_VERSION=1.74.3
 HERDR_VERSION=0.7.4
@@ -19,8 +18,6 @@ DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc5
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
 QUARTO_SHA256_AMD64=ea8c897368791ad9f200010c087ea3111b2e556b12a960487dd4e216902aa102
 QUARTO_SHA256_ARM64=75fbc5c1121ffe65e564e9d24711db2ad8f617f9552f5dc7d8a06307d72dde38
-AWS_CLI_SHA256_X86_64=300cd0b8a8dd64f080202e02ef1745bf327b8a2546054a2d036869c0f27f4199
-AWS_CLI_SHA256_AARCH64=2d4f222c1e16212c0a6bfea23af2e2e8c13a053600d12f68846d794e8470dd9f
 TIGRIS_SHA256_AMD64=bf79f07bddddbca5858b3687a4fd1ba93851a5c8ffea7cfc47a6cfe90b024f4a
 TIGRIS_SHA256_ARM64=c6f777cae123ec83138e3b6dd0c637236abb63b3b42e6caccd68599a71a9e471
 RCLONE_SHA256_AMD64=dbee7ccd7a5d617e4ed4cd4555c16669b511abfe8d31164f61be35ac9e999bd2
@@ -70,8 +67,8 @@ case "$DPKG_ARCH" in
 esac
 
 case "$UNAME_ARCH" in
-  x86_64) AWS_CLI_SHA256=$AWS_CLI_SHA256_X86_64; HERDR_SHA256=$HERDR_SHA256_X86_64 ;;
-  aarch64) AWS_CLI_SHA256=$AWS_CLI_SHA256_AARCH64; HERDR_SHA256=$HERDR_SHA256_AARCH64 ;;
+  x86_64) HERDR_SHA256=$HERDR_SHA256_X86_64 ;;
+  aarch64) HERDR_SHA256=$HERDR_SHA256_AARCH64 ;;
   *) echo "provision-iv: unsupported uname architecture: $UNAME_ARCH" >&2; exit 1 ;;
 esac
 
@@ -83,6 +80,7 @@ download_verified() {
 
 duckdb_version() { /usr/local/bin/duckdb --version 2>/dev/null | awk '{sub(/^v/, "", $1); print $1}' || true; }
 quarto_version() { /usr/local/bin/quarto --version 2>/dev/null | head -1 || true; }
+# aws is on-demand (install-cloud-cli aws); empty in the lock file when absent.
 aws_version() { /usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*#\1#p' || true; }
 tigris_version() { /usr/local/bin/tigris --version 2>/dev/null | head -1 | sed 's/^v//' || true; }
 rclone_version() { /usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true; }
@@ -134,22 +132,16 @@ install_quarto() {
   sudo rm -rf "$backup"
 }
 
-install_aws() {
-  local actual
-  actual=$(aws_version)
-  echo "== AWS CLI $AWS_CLI_VERSION ($UNAME_ARCH; installed: ${actual:-missing}) =="
-  [[ $actual == "$AWS_CLI_VERSION" ]] && return
-  download_verified \
-    "https://awscli.amazonaws.com/awscli-exe-linux-${UNAME_ARCH}-${AWS_CLI_VERSION}.zip" \
-    "$AWS_CLI_SHA256" "$TMP/aws.zip"
-  unzip -q "$TMP/aws.zip" -d "$TMP"
-  if [[ -d /usr/local/aws-cli ]]; then
-    sudo "$TMP/aws/install" --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
-  else
-    sudo "$TMP/aws/install" --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
-  fi
-  [[ $(aws_version) == "$AWS_CLI_VERSION" ]]
-}
+# AWS CLI moved to on-demand 2026-07-28: `install-cloud-cli aws`.
+#
+# It was a default install costing 267-533 MB per VM (~2.9 GB fleet-wide) while
+# NOT ONE VM had ~/.aws/config or ~/.aws/credentials — installed everywhere,
+# configured nowhere. S3 work here targets Tigris over S3-compatible endpoints
+# via the tigris CLI, boto3 and duckdb httpfs, none of which use this CLI.
+#
+# The pins and the installer live in bin/install-cloud-cli alongside azure and
+# gcloud, which were already on-demand for exactly this reason. tigris and
+# rclone stay default: used, and far smaller.
 
 install_tigris() {
   local actual
@@ -222,7 +214,6 @@ install_apex() {
 
 install_duckdb
 install_quarto
-install_aws
 install_tigris
 install_rclone
 install_herdr
