@@ -1,18 +1,50 @@
 #!/usr/bin/env bash
-# render-site [repo-checkout] — quarto render a doc-site repo to <repo>/_site.
+# render-site [repo-checkout] — render a doc-site repo to <repo>/_site.
 #
 # The ungoverned-simple render (render only, no gate/promote). The governed
 # loop is iv/infra/render-promote.md. Baked into iv-image so every repo-VM has
 # it on PATH; one repo per VM.
+#
+# Dispatches to render-md-site (apex, ~1.2 MB) by default. Quarto is 423 MB and
+# no site here uses one of its computational features, so it is the exception
+# now rather than the rule.
+#
+# A repo opts back into Quarto with a `.render-with-quarto` marker file.
+# lundstedt.us (kgl-thoughts) does: decided 2026-07-29, it is public, it carries
+# real design work, and it holds the fleet's only piece of Quarto-only syntax
+# (a `::: {#home-recent}` fenced div). Not worth converting one site for.
+#
+# Per-repo arguments for render-md-site go in `.render-md-site.args`, one per
+# line, blank lines and #-comments ignored. That file carries what _quarto.yml
+# expressed as project.render includes/excludes and include-after-body.
 set -euo pipefail
 
 REPO="${1:-$PWD}"
 cd "$REPO"
 
-command -v quarto >/dev/null || {
-  echo "render-site: quarto not on PATH (expected from iv-image:1.2.0+)" >&2
+if [[ -f .render-with-quarto || "${RENDER_WITH_QUARTO:-}" == 1 ]]; then
+  command -v quarto >/dev/null || {
+    echo "render-site: .render-with-quarto is set but quarto is not on PATH." >&2
+    echo "  Quarto is on-demand now — re-run provision-iv.sh in a repo that has" >&2
+    echo "  a _quarto.yml, or set IV_QUARTO=1, to install it." >&2
+    exit 1
+  }
+  quarto render
+  echo "rendered (quarto): $REPO/_site"
+  exit 0
+fi
+
+command -v render-md-site >/dev/null || {
+  echo "render-site: render-md-site not on PATH (expected from iv-image)" >&2
   exit 1
 }
 
-quarto render
-echo "rendered: $REPO/_site"
+args=()
+if [[ -f .render-md-site.args ]]; then
+  while IFS= read -r line; do
+    [[ -z "${line// }" || "$line" == \#* ]] && continue
+    args+=("$line")
+  done < .render-md-site.args
+fi
+
+render-md-site "$REPO" "${args[@]+"${args[@]}"}"
