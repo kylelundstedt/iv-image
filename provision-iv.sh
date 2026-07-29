@@ -213,7 +213,45 @@ install_apex() {
 }
 
 install_duckdb
-install_quarto
+
+# Quarto is 423 MB — by a wide margin the largest thing this script installs,
+# and bigger than a whole exeslim-dev VM before provisioning. It earns that only
+# on a box that actually builds a site, so as of 2026-07-28 it installs when one
+# is present and is skipped otherwise.
+#
+# Measured before deciding, because the first instinct — "nobody uses Quarto" —
+# was wrong: 5 of 6 VMs had a real site with _site/ build output and had run the
+# binary within the week. What does NOT have one is a fresh VM, and every VM
+# created from here on starts without 423 MB it may never need.
+#
+# Detection is deliberately dumb: any _quarto.yml under $HOME that is not part
+# of a vendored tooling clone. Clone a site afterwards and re-run this script —
+# or set IV_QUARTO=1 — and it installs. `install_quarto` itself is unchanged and
+# still pinned + checksummed.
+#
+# NOTE: none of these sites use Quarto's computational features — no r/python/
+# julia/ojs blocks anywhere. They are plain markdown with navigation, so a
+# ~15 MB generator could plausibly replace it. That is a migration with real
+# regression risk on client-facing content (iv-docs alone is 126 pages across 3
+# profiles with a post-render pipeline), so it is tracked separately rather than
+# smuggled into a disk cleanup.
+quarto_site_present() {
+  [[ "${IV_QUARTO:-0}" == "1" ]] && return 0
+  local f d
+  while IFS= read -r f; do
+    d=$(basename "$(dirname "$f")")
+    case "$d" in iv-image|dotfiles) continue ;; esac
+    return 0
+  done < <(find "$HOME" -maxdepth 3 -name _quarto.yml 2>/dev/null)
+  return 1
+}
+
+if quarto_site_present; then
+  install_quarto
+else
+  echo "== Quarto skipped (no _quarto.yml under \$HOME; IV_QUARTO=1 to force) =="
+fi
+
 install_tigris
 install_rclone
 install_herdr
