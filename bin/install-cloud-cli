@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-cloud-cli <aws|azure|gcloud>... — install heavy cloud CLIs on demand.
+# install-cloud-cli <aws|rclone|azure|gcloud>... — heavy cloud CLIs, on demand.
 #
 # Azure CLI and the Google Cloud SDK are NOT installed by the default IV
 # provisioner: together they add ~2 GB of Python-bundled dependencies, which
@@ -12,7 +12,7 @@
 # `~/.aws/credentials` — it was installed everywhere and configured nowhere.
 # The S3 work on these boxes goes to Tigris over S3-compatible endpoints via
 # the `tigris` CLI, boto3, and duckdb's httpfs, none of which need this CLI.
-# tigris and rclone remain default installs; they are used and far smaller.
+# tigris remains a default install: 18 vendored agent skills depend on it.
 #
 # The 533-vs-267 MB split was a second bug: `aws/install --update` leaves the
 # superseded version behind under /usr/local/aws-cli/v2/, so VMs provisioned
@@ -22,11 +22,14 @@
 # Arch-aware (x86_64 + aarch64). Installs system-wide via sudo (NOPASSWD on VMs).
 set -euo pipefail
 
-[ $# -gt 0 ] || { echo "usage: install-cloud-cli <aws|azure|gcloud> [...]" >&2; exit 1; }
+[ $# -gt 0 ] || { echo "usage: install-cloud-cli <aws|rclone|azure|gcloud> [...]" >&2; exit 1; }
 
 AZURE_CLI_VERSION=${AZURE_CLI_VERSION:-2.88.0-1~noble}
 GCLOUD_VERSION=${GCLOUD_VERSION:-575.0.1}
-# Keep in sync with provision-iv.sh's pins if it ever installs aws again.
+# Pins moved here from provision-iv.sh when these became on-demand.
+RCLONE_VERSION=${RCLONE_VERSION:-1.74.3}
+RCLONE_SHA256_AMD64=dbee7ccd7a5d617e4ed4cd4555c16669b511abfe8d31164f61be35ac9e999bd2
+RCLONE_SHA256_ARM64=8f8d47446e061f80c3256659fe8e21f56d72d96aaefe1275d088ea5eb6b42aa7
 AWS_CLI_VERSION=${AWS_CLI_VERSION:-2.35.7}
 AWS_CLI_SHA256_X86_64=300cd0b8a8dd64f080202e02ef1745bf327b8a2546054a2d036869c0f27f4199
 AWS_CLI_SHA256_AARCH64=2d4f222c1e16212c0a6bfea23af2e2e8c13a053600d12f68846d794e8470dd9f
@@ -61,6 +64,32 @@ install_aws() {
 remove_aws() {
 	sudo rm -rf /usr/local/aws-cli /usr/local/bin/aws /usr/local/bin/aws_completer
 	echo "aws removed (reinstall: install-cloud-cli aws)"
+}
+
+# rclone joined the on-demand set 2026-07-29: 75 MB per VM, and the only thing
+# on this fleet that uses it is the Tigris backup, which runs on klundstedt-mini
+# (backup/tigris-backup.sh, backup/agentsview-snapshot.sh — all job_require_mini).
+# No dev VM had ~/.config/rclone/rclone.conf. The `tigris` CLI stays a default
+# install: 18 vendored agent skills depend on it.
+install_rclone() {
+	if command -v rclone >/dev/null 2>&1; then
+		echo "rclone already installed: $(rclone version | head -1)"
+		return
+	fi
+	local arch sha tmp
+	arch=$(dpkg --print-architecture)
+	case "$arch" in
+		amd64) sha=$RCLONE_SHA256_AMD64 ;;
+		arm64) sha=$RCLONE_SHA256_ARM64 ;;
+		*) echo "install-cloud-cli: unsupported arch $arch" >&2; return 1 ;;
+	esac
+	tmp=$(mktemp -d)
+	trap 'rm -rf "$tmp"' RETURN
+	curl -fsSL "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${arch}.zip" -o "$tmp/rclone.zip"
+	echo "$sha  $tmp/rclone.zip" | sha256sum -c - >/dev/null
+	unzip -q "$tmp/rclone.zip" -d "$tmp"
+	sudo install -m 0755 "$tmp/rclone-v${RCLONE_VERSION}-linux-${arch}/rclone" /usr/local/bin/rclone
+	rclone version | head -1
 }
 
 install_azure() {
@@ -107,9 +136,10 @@ install_gcloud() {
 for target in "$@"; do
 	case "$target" in
 		aws) install_aws ;;
+		rclone) install_rclone ;;
 		remove-aws) remove_aws ;;
 		azure | az) install_azure ;;
 		gcloud | gcp | google) install_gcloud ;;
-		*) echo "unknown target: $target (expected: aws, remove-aws, azure, gcloud)" >&2; exit 1 ;;
+		*) echo "unknown target: $target (expected: aws, rclone, remove-aws, azure, gcloud)" >&2; exit 1 ;;
 	esac
 done

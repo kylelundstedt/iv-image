@@ -156,18 +156,10 @@ install_tigris() {
   [[ $(tigris_version) == "$TIGRIS_VERSION" ]]
 }
 
-install_rclone() {
-  local actual
-  actual=$(rclone_version)
-  echo "== rclone $RCLONE_VERSION ($DPKG_ARCH; installed: ${actual:-missing}) =="
-  [[ $actual == "$RCLONE_VERSION" ]] && return
-  download_verified \
-    "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${DPKG_ARCH}.zip" \
-    "$RCLONE_SHA256" "$TMP/rclone.zip"
-  unzip -q "$TMP/rclone.zip" -d "$TMP"
-  sudo install -m 0755 "$TMP/rclone-v${RCLONE_VERSION}-linux-${DPKG_ARCH}/rclone" /usr/local/bin/rclone
-  [[ $(rclone_version) == "$RCLONE_VERSION" ]]
-}
+# rclone moved to on-demand 2026-07-29 (`install-cloud-cli rclone`): 75 MB per
+# VM, used only by the Tigris backup, which runs on klundstedt-mini. No dev VM
+# had ~/.config/rclone/rclone.conf. tigris stays a default install — 18 vendored
+# agent skills depend on it.
 
 # herdr releases bare binaries named with uname-style arch (x86_64/aarch64)
 install_herdr() {
@@ -253,7 +245,6 @@ else
 fi
 
 install_tigris
-install_rclone
 install_herdr
 install_agentsview
 install_apex
