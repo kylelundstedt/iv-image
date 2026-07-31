@@ -8,7 +8,7 @@ set -euo pipefail
 
 DUCKDB_VERSION=1.5.3
 QUARTO_VERSION=1.9.38
-TIGRIS_VERSION=3.1.0
+TIGRIS_VERSION=3.6.1
 RCLONE_VERSION=1.74.3
 HERDR_VERSION=0.7.4
 AGENTSVIEW_VERSION=0.38.1
@@ -18,8 +18,8 @@ DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc5
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
 QUARTO_SHA256_AMD64=ea8c897368791ad9f200010c087ea3111b2e556b12a960487dd4e216902aa102
 QUARTO_SHA256_ARM64=75fbc5c1121ffe65e564e9d24711db2ad8f617f9552f5dc7d8a06307d72dde38
-TIGRIS_SHA256_AMD64=bf79f07bddddbca5858b3687a4fd1ba93851a5c8ffea7cfc47a6cfe90b024f4a
-TIGRIS_SHA256_ARM64=c6f777cae123ec83138e3b6dd0c637236abb63b3b42e6caccd68599a71a9e471
+TIGRIS_SHA256_AMD64=3038796d9a6ef9f9c0fdfdc7846d516d88b8775a2b34110d9d5813a4b7da57dd
+TIGRIS_SHA256_ARM64=38a4ca3e94e09c22fca08896f12ec8abf5ead731dd7fc07d56e9d3c98b5be4ba
 RCLONE_SHA256_AMD64=dbee7ccd7a5d617e4ed4cd4555c16669b511abfe8d31164f61be35ac9e999bd2
 RCLONE_SHA256_ARM64=8f8d47446e061f80c3256659fe8e21f56d72d96aaefe1275d088ea5eb6b42aa7
 # herdr publishes no checksum files — these are sha256sums of the release
@@ -148,8 +148,12 @@ install_tigris() {
   actual=$(tigris_version)
   echo "== Tigris CLI $TIGRIS_VERSION ($DPKG_ARCH; installed: ${actual:-missing}) =="
   [[ $actual == "$TIGRIS_VERSION" ]] && return
+  # tigrisdata/cli is deprecated and its releases froze without
+  # TIGRIS_FORCE_PATH_STYLE (required by exe.dev Object Storage integrations).
+  # The live repo is tigrisdata/storage, which tags releases @tigrisdata/cli@X.Y.Z
+  # (not vX.Y.Z) — hence the @-prefixed path segment below.
   download_verified \
-    "https://github.com/tigrisdata/cli/releases/download/v${TIGRIS_VERSION}/tigris-linux-${TIGRIS_ASSET_ARCH}.tar.gz" \
+    "https://github.com/tigrisdata/storage/releases/download/@tigrisdata/cli@${TIGRIS_VERSION}/tigris-linux-${TIGRIS_ASSET_ARCH}.tar.gz" \
     "$TIGRIS_SHA256" "$TMP/tigris.tar.gz"
   tar -xzf "$TMP/tigris.tar.gz" -C "$TMP"
   sudo install -m 0755 "$TMP/tigris-linux-${TIGRIS_ASSET_ARCH}" /usr/local/bin/tigris
