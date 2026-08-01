@@ -369,6 +369,64 @@ Host iv-* *.ts.net
 EOF
 fi
 
+echo "== OS security patching (in-place) =="
+# WHY IN-PLACE, not recreate. Recreating a VM was the original patching plan,
+# and it is a poor one: a VM built from the current image already carried 3
+# pending security updates the next day, because the image is rebuilt weekly
+# and a VM freezes whatever build existed the day it was created. Recreate buys
+# point-in-time freshness that decays immediately — and pays for it by
+# destroying whatever working state the box holds. Patching in place is
+# continuous and risks nothing.
+#
+# OUR OWN TIMER, not apt-daily. Both exeuntu and exeslim mask apt-daily.timer
+# and apt-daily-upgrade.timer on purpose: those units hang or fight the
+# platform in a container-as-VM. Unmasking them would undo a deliberate
+# platform decision, so this ships a separate unit instead.
+#
+# NOT unattended-upgrades: it is python-based and there is no system python3
+# here (uv's lives in ~/.local/bin, not on root's PATH), so installing it would
+# pull ~30-50 MB of interpreter into every VM to run three apt commands.
+#
+# No automatic reboot. The kernel belongs to the host on a container-as-VM, so
+# kernel packages are not the point; userspace CVEs are, and those take effect
+# on the next process start.
+sudo tee /etc/systemd/system/iv-apt-upgrade.service >/dev/null <<'UNIT'
+[Unit]
+Description=IV: apt update + upgrade (in-place OS patching)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=DEBIAN_FRONTEND=noninteractive
+# --force-confold/confdef: never prompt, and never silently replace a config we
+# manage. An interactive prompt in a timer unit hangs forever.
+ExecStart=/usr/bin/apt-get update -qq
+ExecStart=/usr/bin/apt-get -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef upgrade
+ExecStart=/usr/bin/apt-get -y autoremove
+UNIT
+
+sudo tee /etc/systemd/system/iv-apt-upgrade.timer >/dev/null <<'UNIT'
+[Unit]
+Description=IV: daily in-place OS patching
+
+[Timer]
+OnCalendar=daily
+# Persistent so a VM that was stopped catches up on next boot rather than
+# silently skipping its window; randomised so the fleet does not hit the
+# mirrors in lockstep.
+Persistent=true
+RandomizedDelaySec=2h
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now iv-apt-upgrade.timer >/dev/null 2>&1 \
+  && echo "  iv-apt-upgrade.timer enabled (daily, persistent)" \
+  || echo "  [!] could not enable iv-apt-upgrade.timer"
+
 echo "== provenance lockfile =="
 LOCK="$HOME/iv-provision.lock"
 {
