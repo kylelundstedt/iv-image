@@ -76,13 +76,15 @@ exe.dev's proxy layer and never lands on the VM.
 ssh exe.dev integrations attach github-<owner>-<repo> <vm>
 
 # Clone over the proxy host: https://<integration>.int.exe.xyz/<org>/<repo>.git
-ssh <vm>.exe.xyz "git clone https://github-<owner>-<repo>.int.exe.xyz/<org>/<repo>.git ~/<repo>"
+ssh <vm>.exe.xyz "git clone https://github.int.exe.xyz/<org>/<repo>.git ~/<repo>"
 ```
 
 The `.int.exe.xyz` host is the VM-side proxy endpoint; exe.dev injects the real
 GitHub token at the proxy, so no PAT or SSH key is stored on the VM. The
 integration name and the `int.exe.xyz` subdomain match (e.g. integration
-`github-kylelundstedt-gitlake` → `github-kylelundstedt-gitlake.int.exe.xyz`).
+`repo-gitlake-rw` → `repo-gitlake-rw.int.exe.xyz`. A generic
+`github.int.exe.xyz` also works and routes by repo path across whatever github
+integrations are attached — prefer it, since it survives an integration rename).
 
 This applies to **private** repos only. The two repos a VM needs to provision
 itself — this one and `dotfiles` — are public and clone straight from
