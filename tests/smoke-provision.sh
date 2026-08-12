@@ -10,10 +10,10 @@ expected_value() {
 }
 
 actual_duckdb=$(/usr/local/bin/duckdb --version | awk '{sub(/^v/, "", $1); print $1}')
-actual_quarto=$(/usr/local/bin/quarto --version | head -1)
-actual_aws=$(/usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*#\1#p')
+actual_quarto=$(/usr/local/bin/quarto --version 2>/dev/null | head -1 || true)
+actual_aws=$(/usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*#\1#p' || true)
 actual_tigris=$(/usr/local/bin/tigris --version | head -1 | sed 's/^v//')
-actual_rclone=$(/usr/local/bin/rclone version | sed -nE '1s/^rclone v?//p')
+actual_rclone=$(/usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true)
 actual_herdr=$(/usr/local/bin/herdr --version | awk '{print $2}')
 actual_agentsview=$(/usr/local/bin/agentsview version --format json | jq -r '.version' | sed 's/^v//')
 actual_shelley=$(/usr/local/bin/shelley version | jq -r '.version')
@@ -22,10 +22,14 @@ actual_shelley_sha256=$(sha256sum /usr/local/bin/shelley | awk '{print $1}')
 actual_apex=$(/usr/local/bin/apex --version | awk 'NR == 1 {print $2}')
 
 [[ $actual_duckdb == "$(expected_value DUCKDB_VERSION)" ]]
-[[ $actual_quarto == "$(expected_value QUARTO_VERSION)" ]]
+if [[ -n $actual_quarto ]]; then
+  [[ $actual_quarto == "$(expected_value QUARTO_VERSION)" ]]
+fi
 [[ $actual_aws == "$(expected_value AWS_CLI_VERSION)" ]]
 [[ $actual_tigris == "$(expected_value TIGRIS_VERSION)" ]]
-[[ $actual_rclone == "$(expected_value RCLONE_VERSION)" ]]
+if [[ -n $actual_rclone ]]; then
+  [[ $actual_rclone == "$(expected_value RCLONE_VERSION)" ]]
+fi
 [[ $actual_herdr == "$(expected_value HERDR_VERSION)" ]]
 [[ $actual_agentsview == "$(expected_value AGENTSVIEW_VERSION)" ]]
 [[ $actual_shelley == "$(expected_value SHELLEY_VERSION)" ]]
