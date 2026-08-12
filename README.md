@@ -28,6 +28,14 @@ The VM does not auto-join the tailnet; join on demand with the `join-tailnet`
 skill (see `tailnet.md`). Repo and doc-site provisioning are unchanged (see
 `consuming.md`).
 
+The provisioner also replaces exe.dev's creation-time Shelley with IV's pinned,
+checksum-verified `aifoundry-org/shelley` release. It preserves the prior binary,
+service metadata, and a database backup; installs atomically; rolls back on a
+failed version/service/API health check; disables Shelley's unmanaged
+self-update path; and records the actual installed version, commit, and hash in
+`~/iv-provision.lock`. OAuth credentials and conversation databases are never
+baked into this repository or copied between VMs.
+
 ### AgentsView source activation
 
 AgentsView `0.38.1` is installed on every IV VM, but its source daemon is
@@ -150,10 +158,10 @@ The pinned artifact is the git commit or release tag of this repo: check out a
 specific revision on the VM, run `provision-iv.sh`, and get the same IV layer on
 that architecture.
 
-- DuckDB, Quarto, Apex, AWS CLI, Tigris CLI, rclone, herdr, and AgentsView versions
-  plus per-architecture SHA-256 checksums are pinned inside `provision-iv.sh`
-  (herdr publishes no checksums upstream — its pins are computed locally at
-  pin time).
+- DuckDB, Quarto, Apex, AWS CLI, Tigris CLI, rclone, herdr, AgentsView, and
+  Shelley versions plus per-architecture SHA-256 checksums are pinned inside
+  `provision-iv.sh` (herdr publishes no checksums upstream — its pins are
+  computed locally at pin time).
 - The provisioner compares installed versions to the recipe and upgrades or
   repairs mismatches; it does not treat any command on `PATH` as sufficient.
 - Skills are vendored into `skills/` (committed = frozen); `provision-iv.sh`

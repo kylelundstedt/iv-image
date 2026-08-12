@@ -16,6 +16,9 @@ actual_tigris=$(/usr/local/bin/tigris --version | head -1 | sed 's/^v//')
 actual_rclone=$(/usr/local/bin/rclone version | sed -nE '1s/^rclone v?//p')
 actual_herdr=$(/usr/local/bin/herdr --version | awk '{print $2}')
 actual_agentsview=$(/usr/local/bin/agentsview version --format json | jq -r '.version' | sed 's/^v//')
+actual_shelley=$(/usr/local/bin/shelley version | jq -r '.version')
+actual_shelley_commit=$(/usr/local/bin/shelley version | jq -r '.commit')
+actual_shelley_sha256=$(sha256sum /usr/local/bin/shelley | awk '{print $1}')
 actual_apex=$(/usr/local/bin/apex --version | awk 'NR == 1 {print $2}')
 
 [[ $actual_duckdb == "$(expected_value DUCKDB_VERSION)" ]]
@@ -25,6 +28,9 @@ actual_apex=$(/usr/local/bin/apex --version | awk 'NR == 1 {print $2}')
 [[ $actual_rclone == "$(expected_value RCLONE_VERSION)" ]]
 [[ $actual_herdr == "$(expected_value HERDR_VERSION)" ]]
 [[ $actual_agentsview == "$(expected_value AGENTSVIEW_VERSION)" ]]
+[[ $actual_shelley == "$(expected_value SHELLEY_VERSION)" ]]
+[[ $actual_shelley_commit == "$(expected_value SHELLEY_COMMIT)" ]]
+[[ $actual_shelley_sha256 == "$(expected_value "SHELLEY_SHA256_$(dpkg --print-architecture | tr '[:lower:]' '[:upper:]')")" ]]
 [[ $actual_apex == "$(expected_value APEX_VERSION)" ]]
 
 for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli agentsview-source-daemon; do
@@ -53,6 +59,10 @@ grep -qx "tigris_version=$actual_tigris" "$lock"
 grep -qx "rclone_version=$actual_rclone" "$lock"
 grep -qx "herdr_version=$actual_herdr" "$lock"
 grep -qx "agentsview_version=$actual_agentsview" "$lock"
+grep -qx "shelley_version=$actual_shelley" "$lock"
+grep -qx "shelley_tag=$(expected_value SHELLEY_TAG)" "$lock"
+grep -qx "shelley_commit=$actual_shelley_commit" "$lock"
+grep -qx "shelley_sha256=$actual_shelley_sha256" "$lock"
 grep -qx "apex_version=$actual_apex" "$lock"
 
 printf 'smoke-provision: IV layer is healthy (%s)\n' "$lock"

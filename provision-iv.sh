@@ -12,6 +12,9 @@ TIGRIS_VERSION=3.6.1
 RCLONE_VERSION=1.74.3
 HERDR_VERSION=0.7.4
 AGENTSVIEW_VERSION=0.38.1
+SHELLEY_VERSION=0.959.914757635
+SHELLEY_TAG=v0.959.914757635
+SHELLEY_COMMIT=33df9d893b0de54d32942c7541841cb0e626baa2
 APEX_VERSION=1.1.13
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
@@ -28,6 +31,8 @@ HERDR_SHA256_X86_64=bc0fc02d4ba500f9cac2353a43e67fe036785ecca6eb55378e050fac3c10
 HERDR_SHA256_AARCH64=544e0002de42806d1ab64ccdef3a7e7414f24717b0b6b022bc9e57d2eefd26a2
 AGENTSVIEW_SHA256_AMD64=3b3f7098ab855571df8e6d6c99efdf307be3407d32197816f0c4c698fac4f997
 AGENTSVIEW_SHA256_ARM64=aace4bea2f6b8626fb9aaecf28b4ffaf93d510550e3468231de81f741266d037
+SHELLEY_SHA256_AMD64=6f1aff50a7890d397c3da32aa4d6fddf06ed6aa8aebaa987adbb527bb3db1dff
+SHELLEY_SHA256_ARM64=e89091075ae2732b6e073bdb75896be9ce8ef524d23b8c916b036c4c73dd53d3
 APEX_SHA256_AMD64=51f77ea1fda1705efbad043812f2033ef660c02592848aa00a914450c9a75c56
 APEX_SHA256_ARM64=09c763f693b18a4081a9ab7758f2b09f88df862bb431f92ae5c8afb80002b7a2
 
@@ -50,6 +55,7 @@ case "$DPKG_ARCH" in
     TIGRIS_ASSET_ARCH=x64
     RCLONE_SHA256=$RCLONE_SHA256_AMD64
     AGENTSVIEW_SHA256=$AGENTSVIEW_SHA256_AMD64
+    SHELLEY_SHA256=$SHELLEY_SHA256_AMD64
     APEX_SHA256=$APEX_SHA256_AMD64
     APEX_ASSET_ARCH=x86_64
     ;;
@@ -60,6 +66,7 @@ case "$DPKG_ARCH" in
     TIGRIS_ASSET_ARCH=arm64
     RCLONE_SHA256=$RCLONE_SHA256_ARM64
     AGENTSVIEW_SHA256=$AGENTSVIEW_SHA256_ARM64
+    SHELLEY_SHA256=$SHELLEY_SHA256_ARM64
     APEX_SHA256=$APEX_SHA256_ARM64
     APEX_ASSET_ARCH=aarch64
     ;;
@@ -86,6 +93,9 @@ tigris_version() { /usr/local/bin/tigris --version 2>/dev/null | head -1 | sed '
 rclone_version() { /usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true; }
 herdr_version() { /usr/local/bin/herdr --version 2>/dev/null | awk '{print $2}' || true; }
 agentsview_version() { /usr/local/bin/agentsview version --format json 2>/dev/null | jq -r '.version' | sed 's/^v//' || true; }
+shelley_info() { /usr/local/bin/shelley version 2>/dev/null || true; }
+shelley_version() { shelley_info | jq -r '.version // empty' 2>/dev/null || true; }
+shelley_commit() { shelley_info | jq -r '.commit // empty' 2>/dev/null || true; }
 apex_version() { /usr/local/bin/apex --version 2>/dev/null | awk 'NR == 1 {print $2}' || true; }
 
 install_duckdb() {
@@ -192,6 +202,103 @@ install_agentsview() {
   [[ $(agentsview_version) == "$AGENTSVIEW_VERSION" ]]
 }
 
+install_shelley() {
+  local actual_version actual_commit backup_dir backup_bin db_backup
+  actual_version=$(shelley_version)
+  actual_commit=$(shelley_commit)
+  echo "== Shelley $SHELLEY_VERSION ($DPKG_ARCH; installed: ${actual_version:-missing} ${actual_commit:+@$actual_commit}) =="
+
+  # The pin is both release and source identity. A matching version built from a
+  # different commit is not accepted.
+  if [[ $actual_version == "$SHELLEY_VERSION" && $actual_commit == "$SHELLEY_COMMIT" ]]; then
+    sudo mkdir -p /etc/systemd/system/shelley.service.d
+    printf '%s\n' '[Service]' 'Environment=SHELLEY_SKIP_VERSION_CHECK=true' \
+      | sudo tee /etc/systemd/system/shelley.service.d/10-iv-managed.conf >/dev/null
+    sudo systemctl daemon-reload
+    # A newly written drop-in does not affect the running process until restart.
+    # Restart even for matching bytes so unmanaged self-upgrade is actually off.
+    sudo systemctl restart shelley.service
+    return
+  fi
+
+  download_verified \
+    "https://github.com/aifoundry-org/shelley/releases/download/${SHELLEY_TAG}/shelley_linux_${DPKG_ARCH}" \
+    "$SHELLEY_SHA256" "$TMP/shelley"
+  chmod 0755 "$TMP/shelley"
+  [[ $("$TMP/shelley" version | jq -r '.version') == "$SHELLEY_VERSION" ]]
+  [[ $("$TMP/shelley" version | jq -r '.commit') == "$SHELLEY_COMMIT" ]]
+
+  backup_dir="$HOME/.local/state/iv-provision/shelley/$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$backup_dir"
+  chmod 700 "$HOME/.local/state/iv-provision" "$HOME/.local/state/iv-provision/shelley" "$backup_dir"
+  if [[ -x /usr/local/bin/shelley ]]; then
+    sudo cp -a /usr/local/bin/shelley "$backup_dir/shelley.prior"
+    sudo chown "$USER:$(id -gn)" "$backup_dir/shelley.prior"
+    sha256sum "$backup_dir/shelley.prior" > "$backup_dir/shelley.prior.sha256"
+    /usr/local/bin/shelley version > "$backup_dir/shelley.prior.version.json" 2>/dev/null || true
+  fi
+  [[ ! -f /etc/systemd/system/shelley.service ]] || sudo cp -a /etc/systemd/system/shelley.service "$backup_dir/shelley.service.prior"
+  [[ ! -f /etc/systemd/system/shelley.socket ]] || sudo cp -a /etc/systemd/system/shelley.socket "$backup_dir/shelley.socket.prior"
+
+  # Stop only the service; keep the socket active. Use SQLite's backup API when
+  # Python is available, otherwise copy the stopped/checkpointed database.
+  sudo systemctl stop shelley.service 2>/dev/null || true
+  if [[ -f $HOME/.config/shelley/shelley.db ]]; then
+    db_backup="$backup_dir/shelley.db.prior"
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$HOME/.config/shelley/shelley.db" "$db_backup" <<'PY'
+import sqlite3, sys
+src, dst = sys.argv[1:]
+a = sqlite3.connect(src)
+b = sqlite3.connect(dst)
+a.backup(b)
+assert b.execute("pragma integrity_check").fetchone()[0] == "ok"
+b.close(); a.close()
+PY
+    else
+      cp -a "$HOME/.config/shelley/shelley.db" "$db_backup"
+    fi
+    chmod 600 "$db_backup"
+  fi
+
+  rollback_shelley() {
+    echo "provision-iv: Shelley health check failed; restoring prior binary" >&2
+    if [[ -x $backup_dir/shelley.prior ]]; then
+      sudo install -o root -g root -m 0755 "$backup_dir/shelley.prior" /usr/local/bin/shelley.rollback-new
+      sudo mv /usr/local/bin/shelley.rollback-new /usr/local/bin/shelley
+      sudo systemctl restart shelley.service || true
+    fi
+  }
+  trap rollback_shelley ERR
+
+  sudo install -o root -g root -m 0755 "$TMP/shelley" /usr/local/bin/shelley.new
+  sudo mv /usr/local/bin/shelley.new /usr/local/bin/shelley
+  sudo mkdir -p /etc/systemd/system/shelley.service.d
+  printf '%s\n' '[Service]' 'Environment=SHELLEY_SKIP_VERSION_CHECK=true' \
+    | sudo tee /etc/systemd/system/shelley.service.d/10-iv-managed.conf >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl start shelley.service
+
+  local healthy=false
+  for _ in $(seq 1 20); do
+    if sudo systemctl is-active --quiet shelley.service \
+        && [[ $(shelley_version) == "$SHELLEY_VERSION" ]] \
+        && [[ $(shelley_commit) == "$SHELLEY_COMMIT" ]]; then
+      healthy=true
+      break
+    fi
+    sleep 1
+  done
+  [[ $healthy == true ]]
+  if [[ -S $HOME/.config/shelley/shelley.sock ]]; then
+    curl -fsS -H 'X-Exedev-Userid: iv-provision-health' \
+      --unix-socket "$HOME/.config/shelley/shelley.sock" \
+      http://localhost/api/conversations >/dev/null
+  fi
+  trap - ERR
+  printf '%s\n' "$backup_dir" > "$HOME/.local/state/iv-provision/shelley/current"
+}
+
 install_apex() {
   local actual
   actual=$(apex_version)
@@ -251,6 +358,7 @@ fi
 install_tigris
 install_herdr
 install_agentsview
+install_shelley
 install_apex
 
 echo "== doc-site and cloud helpers =="
@@ -435,7 +543,10 @@ LOCK="$HOME/iv-provision.lock"
   echo "arch=$DPKG_ARCH"
   echo "exeuntu_image_revision=$(jq -r '.Labels["org.opencontainers.image.revision"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
   echo "exeuntu_image_created=$(jq -r '.Labels["org.opencontainers.image.created"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
-  echo "shelley_version=$(cat /exe.dev/etc/shelley-version 2>/dev/null || echo unknown)"
+  echo "shelley_version=$(shelley_version)"
+  echo "shelley_tag=$SHELLEY_TAG"
+  echo "shelley_commit=$(shelley_commit)"
+  echo "shelley_sha256=$(sha256sum /usr/local/bin/shelley 2>/dev/null | awk '{print $1}')"
   echo "duckdb_version=$(duckdb_version)"
   echo "quarto_version=$(quarto_version)"
   echo "aws_cli_version=$(aws_version)"
