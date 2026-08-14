@@ -14,10 +14,10 @@ title: "Registry"
 Under the script-based approach nothing is built or pulled, so the Docker
 registry service is gone. `iv-registry` survives only as the host for this doc
 site, served on `:8000` over the exe.dev HTTPS proxy at
-`https://iv-registry.exe.xyz/`. It runs stock `boldsoftware/exeuntu` with Quarto
-installed and the site served by a systemd user service — the same `:8000`
-doc-site pattern every IV VM uses. (It could equally be retired and the site
-moved to any other VM, or dropped entirely.)
+`https://iv-registry.exe.xyz/`. It runs stock `boldsoftware/exeuntu` with the
+Apex-backed documentation site served by nginx on `:8000` — the same pattern
+every IV VM uses. (It could equally be retired and the site moved to any other
+VM, or dropped entirely.)
 
 If you still run the legacy `registry:2` container here for unrelated reasons,
 it is independent of this project and out of scope for these docs.
@@ -34,8 +34,8 @@ ssh iv-registry.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git
   && provision-docsite ~/iv-image"
 ```
 
-`provision-iv.sh` installs Quarto; `provision-docsite` renders the site and
-serves `_site` on `:8000`. The VM is reached over the exe.dev edge; run the
+`provision-iv.sh` installs Apex; `provision-docsite` renders the site and serves
+`_site` on `:8000`. The VM is reached over the exe.dev edge; run the
 `join-tailnet` skill only if you want `ssh iv-registry` short-name access.
 
 ## Historical: arm64 image-build research (custom-image era, retired)

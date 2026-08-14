@@ -1,0 +1,7 @@
+--title=iv-image
+--include=index.qmd
+--include=bootstrap.md
+--include=building.md
+--include=consuming.md
+--include=tailnet.md
+--include=registry.md

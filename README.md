@@ -84,9 +84,9 @@ validation. No VM worktree is authoritative.
 
 ## General-purpose Markdown with Apex
 
-[Apex](https://github.com/ApexMarkdown/apex) is installed as the lightweight
-Markdown command for previews, generated reports, terminal reading, and format
-conversion. Quarto remains installed for multi-page documentation websites.
+[Apex](https://github.com/ApexMarkdown/apex) is the Markdown engine for
+previews, generated reports, terminal reading, format conversion, and the
+multi-page documentation sites produced by `render-site`.
 
 ```bash
 # Read Markdown in the terminal.
@@ -103,9 +103,8 @@ apex notes.md > /tmp/notes.fragment.html
 ```
 
 Apex is version-pinned and checksum-verified by `provision-iv.sh`, like the
-other provisioned binaries. Prefer it for document-level Markdown work; use
-`render-site`/Quarto when the output needs site navigation, search, profiles,
-or project-wide link handling.
+other provisioned binaries. `render-site` wraps Apex output with navigation,
+per-page TOCs, stable links, and the site template.
 
 ## Why a script, not a custom image
 
@@ -142,7 +141,7 @@ and this script continuing to carry the volatile, version-pinned tools. See
 
 | File                    | Role                                                                                                                                                       |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Quarto, Apex, tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Apex, tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh`      | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                                      |
 | `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
 | `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand aws/azure/gcloud) — installed onto PATH.                                 |
@@ -150,7 +149,7 @@ and this script continuing to carry the volatile, version-pinned tools. See
 | `dotfiles-manifest.pin` | The dotfiles commit whose `provisioning/` manifests the vendored content comes from (see "Relationship to the dotfiles repo").                             |
 | `tests/`                | Validation suite: `smoke-provision.sh` (run on a VM after provisioning), `test-provision.sh`, `test-ssh-guard.sh`, Python unit tests — run by CI.          |
 | `.claude/skills/`       | Project-level skills for agents working in this repo (`join-tailnet`, `upgrade-vm`) — not vendored onto VMs.                                               |
-| `*.qmd` / `*.md`        | Documentation (Quarto sources, readable in-repo; optionally served by `provision-docsite` on any IV VM).                                                   |
+| `*.qmd` / `*.md`        | Markdown documentation sources, readable in-repo and served by `provision-docsite` on any IV VM.                                                               |
 
 ## Reproducibility
 
@@ -158,8 +157,8 @@ The pinned artifact is the git commit or release tag of this repo: check out a
 specific revision on the VM, run `provision-iv.sh`, and get the same IV layer on
 that architecture.
 
-- DuckDB, Quarto, Apex, AWS CLI, Tigris CLI, rclone, herdr, AgentsView, and
-  Shelley versions plus per-architecture SHA-256 checksums are pinned inside
+- DuckDB, Apex, AWS CLI, Tigris CLI, rclone, herdr, AgentsView, and Shelley
+  versions plus per-architecture SHA-256 checksums are pinned inside
   `provision-iv.sh` (herdr publishes no checksums upstream — its pins are
   computed locally at pin time).
 - The provisioner compares installed versions to the recipe and upgrades or

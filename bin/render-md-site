@@ -1,23 +1,10 @@
 #!/usr/bin/env python3
-"""render-md-site [repo] — render a markdown repo to <repo>/_site with lowdown.
+"""render-md-site [repo] — render a Markdown repo to <repo>/_site with Apex.
 
-The lightweight replacement for `render-site` (Quarto). Quarto is 423 MB and
-none of these sites use a single one of its computational features — no r,
-python, julia or ojs blocks anywhere on the fleet. It was a static site
-generator for plain markdown, at ~350x the size of one.
-
-Design rule: FOLLOW THE REPO. The output tree mirrors the source tree exactly,
-so a/b/c.md becomes _site/a/b/c.html and every relative link keeps working.
-That rules out mdBook (wants SUMMARY.md), Hugo and Zola (want their own
-content/ layout) — all of which would restructure the repo to suit themselves.
-
-lowdown does the markdown; this does the site. lowdown emits an HTML fragment,
-which this wraps in a template with sidebar navigation, a per-page table of
-contents, and any extra head/body HTML the site needs.
-
-Not implemented, and the one real loss against Quarto: full-text search. The
-sidebar and TOC replace Quarto's navigation; search would want a JSON index and
-a few lines of JS, which is a separate piece of work.
+Apex renders each Markdown document to an HTML fragment; this script supplies
+site navigation, per-page tables of contents, link rewriting, and the shared
+HTML shell. The output tree mirrors the source tree, so a/b/c.md becomes
+_site/a/b/c.html and existing relative links keep working.
 
 Usage:
   render-md-site                       # render $PWD
@@ -30,7 +17,6 @@ from __future__ import annotations
 import argparse
 import functools
 import html
-import os
 import re
 import shutil
 import subprocess
@@ -46,16 +32,25 @@ from pathlib import Path
 # only "_site/**" made apex walk that previous HTML as source — 241 pages
 # instead of ~50.
 ALWAYS_EXCLUDES = [
-    "_site*/**", ".quarto/**", ".git/**", ".entire/**",
-    "node_modules/**", ".venv/**", ".github/**",
+    "_site*/**",
+    ".quarto/**",
+    ".git/**",
+    ".entire/**",
+    "node_modules/**",
+    ".venv/**",
+    ".github/**",
 ]
 
 DEFAULT_EXCLUDES = [
-    "AGENTS.md", "CLAUDE.md", "TODO.md", "CHANGELOG.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "TODO.md",
+    "CHANGELOG.md",
     # Quarto ignores README.md in a project by default, and every site here
     # relies on that: README is repo-facing, index.md is site-facing. Rendering
     # both produces two near-duplicate landing pages.
-    "README.md", "**/README.md",
+    "README.md",
+    "**/README.md",
 ]
 
 # Mermaid, as a named preset rather than a pasted <script>: gitlake's
@@ -67,7 +62,7 @@ AFTER_BODY_PRESETS = {
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
   mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
   let i = 0;
-  // lowdown emits ```mermaid as <pre><code class="language-mermaid">; the
+  // Apex emits ```mermaid as <pre lang="mermaid"><code>; the
   // other selectors cover renderers that use a class or lang attribute.
   for (const el of document.querySelectorAll('pre[lang="mermaid"] > code, pre.mermaid, div.mermaid, pre > code.language-mermaid')) {
     const host = el.tagName === 'CODE' ? el.parentElement : el;
@@ -151,15 +146,20 @@ def _glob_re(pat: str) -> re.Pattern:
     i, out = 0, []
     while i < len(pat):
         if pat.startswith("**/", i):
-            out.append("(?:.*/)?"); i += 3
+            out.append("(?:.*/)?")
+            i += 3
         elif pat.startswith("**", i):
-            out.append(".*"); i += 2
+            out.append(".*")
+            i += 2
         elif pat[i] == "*":
-            out.append("[^/]*"); i += 1
+            out.append("[^/]*")
+            i += 1
         elif pat[i] == "?":
-            out.append("[^/]"); i += 1
+            out.append("[^/]")
+            i += 1
         else:
-            out.append(re.escape(pat[i])); i += 1
+            out.append(re.escape(pat[i]))
+            i += 1
     return re.compile("^" + "".join(out) + "$")
 
 
@@ -173,8 +173,12 @@ def matches(rel: str, patterns: list[str]) -> bool:
     return False
 
 
-def discover(root: Path, includes: list[str], user_excludes: list[str],
-             default_excludes: list[str]) -> list[Path]:
+def discover(
+    root: Path,
+    includes: list[str],
+    user_excludes: list[str],
+    default_excludes: list[str],
+) -> list[Path]:
     """An explicit --include beats a DEFAULT exclude; a user --exclude beats both.
 
     ave-adapters' _quarto.yml renders README.md and TODO.md as site content,
@@ -205,6 +209,20 @@ def discover(root: Path, includes: list[str], user_excludes: list[str],
     return out
 
 
+def first_h1(text: str) -> str | None:
+    """Return the first H1 outside fenced code blocks."""
+    in_fence = False
+    for line in text.splitlines():
+        if line.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            match = re.match(r"^#\s+(.+?)\s*$", line)
+            if match:
+                return match.group(1)
+    return None
+
+
 def strip_frontmatter(text: str) -> tuple[str, str | None]:
     """Return (body, title). Frontmatter is stripped here, not by the renderer,
     so the title is available for the nav and <title> before rendering."""
@@ -213,49 +231,32 @@ def strip_frontmatter(text: str) -> tuple[str, str | None]:
     end = text.find("\n---", 3)
     if end == -1:
         return text, None
-    fm, body = text[3:end], text[end + 4:].lstrip("\n")
+    fm, body = text[3:end], text[end + 4 :].lstrip("\n")
     m = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', fm, re.M)
     return body, (m.group(1) if m else None)
 
 
-# `-m quarto` keeps Pandoc fenced divs and callouts (`::: {.callout-note}`),
-# which these repos use and which `-m gfm` renders as literal text.
-# `--no-relaxed-tables` is REQUIRED with it: quarto/unified mode enables
-# Kramdown-style relaxed tables, where a GFM separator row is consumed as data
-# and the header row comes out as <td> inside <tbody> with no <thead>. Measured
-# 2026-07-29 — the default silently degrades every table on the site.
-# lowdown, not apex.
-#
-# apex was the first choice — already installed, pinned, and with a Quarto mode
-# that suited these repos. It lost on correctness: three separate silent
-# content-loss bugs on this corpus, reported as ApexMarkdown/apex#31.
-#
-#   1. paragraphs over 1024 chars truncated (unified/quarto/mmd/kramdown)
-#   2. a list item + a table + a later `::` makes the table vanish (unified/quarto)
-#   3. a heading ending in `[...]` loses that text; with
-#      --no-relaxed-tables --no-sup-sub together, the heading disappears entirely
-#
-# There is no apex mode that avoids all three. Every one exits 0, writes nothing
-# to stderr, and emits well-formed HTML, so only tests/sitediff.py's word-level
-# comparison against a Quarto render made them visible.
-#
-# lowdown is correct on all three, is ~268 KB against apex's 1.2 MB, and ships in
-# Ubuntu (24.04: 1.1.0-1) so apt owns its security updates instead of us pinning
-# and checksumming another binary.
-#
-# What it costs: Pandoc fenced divs and callouts render as literal text. No site
-# here uses them — the fleet's only fenced div is on lundstedt.us, which stays on
-# Quarto. lowdown also leaves quotes straight rather than curly; sitediff.py
-# normalises typography so that difference cannot mask a real regression.
-RENDERER = ["lowdown", "--parse-no-metadata"]
+# Unified mode preserves the fenced div/callout syntax used by the fleet.
+# Disable automatic IDs because Apex otherwise treats trailing `[bracket text]`
+# as an explicit ID and removes it from the visible heading. render-md-site adds
+# deterministic IDs itself while building the TOC. The other two flags preserve
+# GFM table headers, literal ~text~/^text^, and prose containing `::`.
+RENDERER = [
+    "apex",
+    "-m",
+    "unified",
+    "--no-ids",
+    "--no-relaxed-tables",
+    "--no-sup-sub",
+    "--no-one-line-definitions",
+]
 
 
 def render_fragment(md_text: str) -> str:
-    """Render one page to an HTML fragment. Fails loudly — a silently empty
-    page is worse than a stop, which is the whole lesson of apex#31."""
+    """Render one page to an HTML fragment, failing loudly on renderer errors."""
     r = subprocess.run(RENDERER, input=md_text, capture_output=True, text=True)
     if r.returncode != 0:
-        raise RuntimeError(f"lowdown failed: {r.stderr.strip()[:300]}")
+        raise RuntimeError(f"apex failed: {r.stderr.strip()[:300]}")
     return escape_mermaid(r.stdout)
 
 
@@ -273,14 +274,17 @@ def escape_mermaid(out: str) -> str:
     fence, so this unescapes first and re-escapes from scratch rather than
     trying to patch selectively.
     """
+
     def fix(m: re.Match) -> str:
         open_tag, inner = m.group(1), m.group(2)
-        inner = re.sub(r"</?code[^>]*>", "", inner)      # apex sometimes wraps in <code>
+        inner = re.sub(r"</?code[^>]*>", "", inner)  # apex sometimes wraps in <code>
         return open_tag + html.escape(html.unescape(inner), quote=False) + "</pre>"
 
-    out = re.sub(r'(<pre[^>]*mermaid[^>]*>)(.*?)</pre>', fix, out, flags=re.S)
-    # lowdown emits ```mermaid as <pre><code class="language-mermaid">.
-    return re.sub(r'(<pre>)(<code class="language-mermaid">.*?)</pre>', fix, out, flags=re.S)
+    out = re.sub(r"(<pre[^>]*mermaid[^>]*>)(.*?)</pre>", fix, out, flags=re.S)
+    # Also accept lowdown-style output so older generated fragments remain safe.
+    return re.sub(
+        r'(<pre>)(<code class="language-mermaid">.*?)</pre>', fix, out, flags=re.S
+    )
 
 
 def rewrite_links(body: str, depth: int) -> str:
@@ -289,6 +293,7 @@ def rewrite_links(body: str, depth: int) -> str:
     This is the whole reason the output tree mirrors the source tree: relative
     links keep resolving without a link database or a base-url rewrite pass.
     """
+
     def sub(m: re.Match) -> str:
         url = m.group(1)
         if re.match(r"^(https?:|mailto:|#|/)", url):
@@ -297,6 +302,7 @@ def rewrite_links(body: str, depth: int) -> str:
         if target.endswith((".md", ".qmd")):
             target = target.rsplit(".", 1)[0] + ".html"
         return f'href="{target}{"#" + frag if frag else ""}"'
+
     return re.sub(r'href="([^"]+)"', sub, body)
 
 
@@ -337,32 +343,49 @@ def build_nav(pages: list[tuple[str, str]], current: str, root_prefix: str) -> s
     """Sidebar grouped by directory — the repo's own structure, not a hand-kept list."""
     groups: dict[str, list[tuple[str, str]]] = {}
     for href, title in pages:
-        groups.setdefault(str(Path(href).parent) if "/" in href else "", []).append((href, title))
+        groups.setdefault(str(Path(href).parent) if "/" in href else "", []).append(
+            (href, title)
+        )
     out = []
     for section in sorted(groups, key=lambda s: (s != "", s)):
         if section:
             out.append(f'<div class="section">{html.escape(section)}</div>')
         out.append("<ul>")
-        for href, title in sorted(groups[section], key=lambda p: (not p[0].endswith("index.html"), p[0])):
+        for href, title in sorted(
+            groups[section], key=lambda p: (not p[0].endswith("index.html"), p[0])
+        ):
             cls = ' class="current"' if href == current else ""
-            out.append(f'<li><a{cls} href="{root_prefix}{href}">{html.escape(title)}</a></li>')
+            out.append(
+                f'<li><a{cls} href="{root_prefix}{href}">{html.escape(title)}</a></li>'
+            )
         out.append("</ul>")
     return "".join(out)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Render a markdown repo to _site with lowdown.")
+    ap = argparse.ArgumentParser(
+        description="Render a Markdown repo to _site with Apex."
+    )
     ap.add_argument("repo", nargs="?", default=".")
-    ap.add_argument("--title", default=None, help="site title (default: repo directory name)")
+    ap.add_argument(
+        "--title", default=None, help="site title (default: repo directory name)"
+    )
     ap.add_argument("--out", default="_site")
     ap.add_argument("--include", action="append", default=[], help="glob; repeatable")
     ap.add_argument("--exclude", action="append", default=[], help="glob; repeatable")
     ap.add_argument("--no-default-excludes", action="store_true")
-    ap.add_argument("--after-body", action="append", default=[],
-                    help=f"preset ({', '.join(AFTER_BODY_PRESETS)}) or a file path")
+    ap.add_argument(
+        "--after-body",
+        action="append",
+        default=[],
+        help=f"preset ({', '.join(AFTER_BODY_PRESETS)}) or a file path",
+    )
     ap.add_argument("--head", default=None, help="file of extra <head> HTML")
-    ap.add_argument("--no-md-twins", action="store_true",
-                    help="skip copying sources next to the HTML")
+    ap.add_argument(
+        "--no-md-twins",
+        action="store_true",
+        help="skip copying sources next to the HTML",
+    )
     args = ap.parse_args()
 
     root = Path(args.repo).resolve()
@@ -370,7 +393,10 @@ def main() -> int:
         print(f"render-md-site: not a directory: {root}", file=sys.stderr)
         return 2
     if shutil.which(RENDERER[0]) is None:
-        print(f"render-md-site: {RENDERER[0]} not on PATH (provisioned by iv-image)", file=sys.stderr)
+        print(
+            f"render-md-site: {RENDERER[0]} not on PATH (provisioned by iv-image)",
+            file=sys.stderr,
+        )
         return 1
 
     site_title = args.title or root.name
@@ -379,7 +405,9 @@ def main() -> int:
 
     sources = discover(root, args.include, user_excludes, default_excludes)
     if not sources:
-        print("render-md-site: no markdown found after include/exclude", file=sys.stderr)
+        print(
+            "render-md-site: no markdown found after include/exclude", file=sys.stderr
+        )
         return 1
 
     after_body = "\n".join(
@@ -394,8 +422,12 @@ def main() -> int:
         rel = src.relative_to(root)
         text = src.read_text(encoding="utf-8", errors="replace")
         body_md, fm_title = strip_frontmatter(text)
-        m = re.search(r"^#\s+(.+?)\s*$", body_md, re.M)
-        title = fm_title or (m.group(1) if m else rel.stem.replace("-", " ").replace("_", " ").title())
+        authored_h1 = first_h1(body_md)
+        title = (
+            fm_title
+            or authored_h1
+            or rel.stem.replace("-", " ").replace("_", " ").title()
+        )
         entries.append((src, rel.with_suffix(".html").as_posix(), title, body_md))
 
     nav_pages = [(href, title) for _, href, title, _ in entries]
@@ -410,19 +442,28 @@ def main() -> int:
         body = rewrite_links(body, depth)
         body, toc = extract_toc(body)
         page = PAGE.format(
-            title=html.escape(f"{title} — {site_title}" if title != site_title else title),
+            title=html.escape(
+                f"{title} — {site_title}" if title != site_title else title
+            ),
             site_title=html.escape(site_title),
-            css=CSS, head_extra=head_extra, after_body=after_body,
+            css=CSS,
+            head_extra=head_extra,
+            after_body=after_body,
             nav=build_nav(nav_pages, href, root_prefix),
-            body=body, toc=toc, root=root_prefix,
+            body=body,
+            toc=toc,
+            root=root_prefix,
         )
         dest = out_root / href
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(page, encoding="utf-8")
-        # The markdown twin is free: the source already IS markdown, so what
-        # Quarto produced with `format: gfm` is a copy here.
+        # Emit a clean Markdown twin next to every HTML page. Frontmatter was
+        # stripped above; restore its title as an H1 when the body has none.
         if not args.no_md_twins:
-            shutil.copyfile(src, dest.with_suffix(src.suffix))
+            twin = body_md
+            if first_h1(twin) is None:
+                twin = f"# {title}\n\n{twin}"
+            dest.with_suffix(".md").write_text(twin, encoding="utf-8")
 
     # index.html fallback so the site root is never a 404.
     if not (out_root / "index.html").exists():
@@ -430,7 +471,9 @@ def main() -> int:
         (out_root / "index.html").write_text(
             f'<!doctype html><meta charset="utf-8">'
             f'<meta http-equiv="refresh" content="0; url={first}">'
-            f'<a href="{first}">{html.escape(site_title)}</a>', encoding="utf-8")
+            f'<a href="{first}">{html.escape(site_title)}</a>',
+            encoding="utf-8",
+        )
 
     print(f"rendered {len(entries)} page(s): {out_root}")
     return 0

@@ -42,7 +42,7 @@ ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-i
   && ~/iv-image/provision-iv.sh"
 ```
 
-`provision-iv.sh` installs DuckDB, Quarto, Apex (the lightweight Markdown
+`provision-iv.sh` installs DuckDB, Apex (the Markdown and documentation-site
 renderer), the cloud CLIs (tigris/rclone; aws/azure/gcloud on demand,
 via the `install-cloud-cli` helper), herdr, the
 doc-site tools, the team agent config (AGENTS.md, Claude settings, Codex config, MCP

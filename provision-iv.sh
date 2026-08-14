@@ -7,7 +7,6 @@
 set -euo pipefail
 
 DUCKDB_VERSION=1.5.3
-QUARTO_VERSION=1.9.38
 TIGRIS_VERSION=3.6.1
 RCLONE_VERSION=1.74.3
 HERDR_VERSION=0.7.4
@@ -15,12 +14,10 @@ AGENTSVIEW_VERSION=0.38.1
 SHELLEY_VERSION=0.959.914757635
 SHELLEY_TAG=v0.959.914757635
 SHELLEY_COMMIT=33df9d893b0de54d32942c7541841cb0e626baa2
-APEX_VERSION=1.1.13
+APEX_VERSION=1.1.16
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
-QUARTO_SHA256_AMD64=ea8c897368791ad9f200010c087ea3111b2e556b12a960487dd4e216902aa102
-QUARTO_SHA256_ARM64=75fbc5c1121ffe65e564e9d24711db2ad8f617f9552f5dc7d8a06307d72dde38
 TIGRIS_SHA256_AMD64=3038796d9a6ef9f9c0fdfdc7846d516d88b8775a2b34110d9d5813a4b7da57dd
 TIGRIS_SHA256_ARM64=38a4ca3e94e09c22fca08896f12ec8abf5ead731dd7fc07d56e9d3c98b5be4ba
 RCLONE_SHA256_AMD64=dbee7ccd7a5d617e4ed4cd4555c16669b511abfe8d31164f61be35ac9e999bd2
@@ -33,8 +30,8 @@ AGENTSVIEW_SHA256_AMD64=3b3f7098ab855571df8e6d6c99efdf307be3407d32197816f0c4c698
 AGENTSVIEW_SHA256_ARM64=aace4bea2f6b8626fb9aaecf28b4ffaf93d510550e3468231de81f741266d037
 SHELLEY_SHA256_AMD64=6f1aff50a7890d397c3da32aa4d6fddf06ed6aa8aebaa987adbb527bb3db1dff
 SHELLEY_SHA256_ARM64=e89091075ae2732b6e073bdb75896be9ce8ef524d23b8c916b036c4c73dd53d3
-APEX_SHA256_AMD64=51f77ea1fda1705efbad043812f2033ef660c02592848aa00a914450c9a75c56
-APEX_SHA256_ARM64=09c763f693b18a4081a9ab7758f2b09f88df862bb431f92ae5c8afb80002b7a2
+APEX_SHA256_AMD64=d19c99148cf1d3cd3302c1ff13b893c09f5b3575b00c67f183b0b9ddb7000ac1
+APEX_SHA256_ARM64=dbf306f515301b6c2b91988d142da2e95b89c3efbcc359c03975fb12a811a2d9
 
 if [[ $EUID -eq 0 ]]; then
   echo "provision-iv: run as the VM login user, not with sudo" >&2
@@ -50,7 +47,6 @@ trap 'rm -rf "$TMP"' EXIT
 case "$DPKG_ARCH" in
   amd64)
     DUCKDB_SHA256=$DUCKDB_SHA256_AMD64
-    QUARTO_SHA256=$QUARTO_SHA256_AMD64
     TIGRIS_SHA256=$TIGRIS_SHA256_AMD64
     TIGRIS_ASSET_ARCH=x64
     RCLONE_SHA256=$RCLONE_SHA256_AMD64
@@ -61,7 +57,6 @@ case "$DPKG_ARCH" in
     ;;
   arm64)
     DUCKDB_SHA256=$DUCKDB_SHA256_ARM64
-    QUARTO_SHA256=$QUARTO_SHA256_ARM64
     TIGRIS_SHA256=$TIGRIS_SHA256_ARM64
     TIGRIS_ASSET_ARCH=arm64
     RCLONE_SHA256=$RCLONE_SHA256_ARM64
@@ -85,8 +80,21 @@ download_verified() {
   printf '%s  %s\n' "$sha256" "$output" | sha256sum -c -
 }
 
+remove_legacy_quarto() {
+  # Reclaim installations created by older iv-image releases. Do not touch a
+  # user-managed quarto binary unless it resolves into the old /opt/quarto tree.
+  local target dir
+  if [[ -L /usr/local/bin/quarto ]]; then
+    target=$(readlink -f /usr/local/bin/quarto || true)
+    [[ $target == /opt/quarto/* ]] && sudo rm -f /usr/local/bin/quarto
+  fi
+  [[ ! -L /opt/quarto ]] || sudo rm -f /opt/quarto
+  while IFS= read -r dir; do
+    sudo rm -rf -- "$dir"
+  done < <(find /opt -maxdepth 1 -type d -name 'quarto-*' -print)
+}
+
 duckdb_version() { /usr/local/bin/duckdb --version 2>/dev/null | awk '{sub(/^v/, "", $1); print $1}' || true; }
-quarto_version() { /usr/local/bin/quarto --version 2>/dev/null | head -1 || true; }
 # aws is on-demand (install-cloud-cli aws); empty in the lock file when absent.
 aws_version() { /usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*#\1#p' || true; }
 tigris_version() { /usr/local/bin/tigris --version 2>/dev/null | head -1 | sed 's/^v//' || true; }
@@ -109,37 +117,6 @@ install_duckdb() {
   unzip -q -o "$TMP/duckdb.zip" -d "$TMP/duckdb"
   sudo install -m 0755 "$TMP/duckdb/duckdb" /usr/local/bin/duckdb
   [[ $(duckdb_version) == "$DUCKDB_VERSION" ]]
-}
-
-install_quarto() {
-  local actual
-  actual=$(quarto_version)
-  echo "== Quarto $QUARTO_VERSION ($DPKG_ARCH; installed: ${actual:-missing}) =="
-  [[ $actual == "$QUARTO_VERSION" ]] && return
-  download_verified \
-    "https://github.com/quarto-dev/quarto-cli/releases/download/v${QUARTO_VERSION}/quarto-${QUARTO_VERSION}-linux-${DPKG_ARCH}.tar.gz" \
-    "$QUARTO_SHA256" "$TMP/quarto.tar.gz"
-  mkdir -p "$TMP/quarto"
-  tar -xzf "$TMP/quarto.tar.gz" -C "$TMP/quarto" --strip-components=1
-  [[ $("$TMP/quarto/bin/quarto" --version | head -1) == "$QUARTO_VERSION" ]]
-  local target="/opt/quarto-${QUARTO_VERSION}"
-  local backup=/opt/quarto.pre-iv
-  sudo rm -rf "$target.new"
-  sudo mkdir -p "$target.new"
-  sudo cp -a "$TMP/quarto/." "$target.new/"
-  sudo rm -rf "$target"
-  sudo mv "$target.new" "$target"
-  sudo rm -rf "$backup"
-  if [[ -e /opt/quarto && ! -L /opt/quarto ]]; then
-    sudo mv /opt/quarto "$backup"
-  fi
-  if ! sudo ln -sfn "$target" /opt/quarto; then
-    [[ ! -e $backup ]] || sudo mv "$backup" /opt/quarto
-    return 1
-  fi
-  sudo ln -sfn /opt/quarto/bin/quarto /usr/local/bin/quarto
-  [[ $(quarto_version) == "$QUARTO_VERSION" ]]
-  sudo rm -rf "$backup"
 }
 
 # AWS CLI moved to on-demand 2026-07-28: `install-cloud-cli aws`.
@@ -315,46 +292,8 @@ install_apex() {
   [[ $(apex_version) == "$APEX_VERSION" ]]
 }
 
+remove_legacy_quarto
 install_duckdb
-
-# Quarto is 423 MB — by a wide margin the largest thing this script installs,
-# and bigger than a whole exeslim-dev VM before provisioning. It earns that only
-# on a box that actually builds a site, so as of 2026-07-28 it installs when one
-# is present and is skipped otherwise.
-#
-# Measured before deciding, because the first instinct — "nobody uses Quarto" —
-# was wrong: 5 of 6 VMs had a real site with _site/ build output and had run the
-# binary within the week. What does NOT have one is a fresh VM, and every VM
-# created from here on starts without 423 MB it may never need.
-#
-# Detection is deliberately dumb: any _quarto.yml under $HOME that is not part
-# of a vendored tooling clone. Clone a site afterwards and re-run this script —
-# or set IV_QUARTO=1 — and it installs. `install_quarto` itself is unchanged and
-# still pinned + checksummed.
-#
-# NOTE: none of these sites use Quarto's computational features — no r/python/
-# julia/ojs blocks anywhere. They are plain markdown with navigation, so a
-# ~15 MB generator could plausibly replace it. That is a migration with real
-# regression risk on client-facing content (iv-docs alone is 126 pages across 3
-# profiles with a post-render pipeline), so it is tracked separately rather than
-# smuggled into a disk cleanup.
-quarto_site_present() {
-  [[ "${IV_QUARTO:-0}" == "1" ]] && return 0
-  local f d
-  while IFS= read -r f; do
-    d=$(basename "$(dirname "$f")")
-    case "$d" in iv-image|dotfiles) continue ;; esac
-    return 0
-  done < <(find "$HOME" -maxdepth 3 -name _quarto.yml 2>/dev/null)
-  return 1
-}
-
-if quarto_site_present; then
-  install_quarto
-else
-  echo "== Quarto skipped (no _quarto.yml under \$HOME; IV_QUARTO=1 to force) =="
-fi
-
 install_tigris
 install_herdr
 install_agentsview
@@ -548,7 +487,6 @@ LOCK="$HOME/iv-provision.lock"
   echo "shelley_commit=$(shelley_commit)"
   echo "shelley_sha256=$(sha256sum /usr/local/bin/shelley 2>/dev/null | awk '{print $1}')"
   echo "duckdb_version=$(duckdb_version)"
-  echo "quarto_version=$(quarto_version)"
   echo "aws_cli_version=$(aws_version)"
   echo "tigris_version=$(tigris_version)"
   echo "rclone_version=$(rclone_version)"
