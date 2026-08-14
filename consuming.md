@@ -22,7 +22,7 @@ For reproducibility, pin by checking out a Git tag/sha of this repo before
 running `provision-iv.sh`. Tool releases and checksums are pinned in the script,
 and team skills are vendored in the repo. `~/iv-provision.lock` records the
 exeuntu image revision, Shelley version, installed
-DuckDB/Quarto/AWS/Tigris/rclone/herdr versions, skills count, manifest pin, and
+DuckDB/Apex/AWS/Tigris/rclone/herdr versions, skills count, manifest pin, and
 provisioning repository SHA.
 
 ## Joining the tailnet (on demand)
@@ -99,7 +99,7 @@ After cloning a repo (see above):
 ssh <vm>.exe.xyz "provision-docsite ~/<repo>"
 ```
 
-`provision-docsite` renders the Quarto project and serves `_site` on `:8000` with
-**nginx** (gzip + immutable cache headers on the hashed `site_libs/` assets — a
-typical Quarto page's payload drops ~80%+). To re-render after edits, run
-`render-site ~/<repo>` — no restart needed (nginx serves whatever is in `_site`).
+`provision-docsite` renders the Markdown project with Apex and serves `_site`
+on `:8000` with **nginx** (gzip + immutable cache headers). To re-render after
+edits, run `render-site ~/<repo>` — no restart needed because nginx serves
+whatever is in `_site`.

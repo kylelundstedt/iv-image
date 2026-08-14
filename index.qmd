@@ -13,10 +13,9 @@ VM into an IV dev box.
   agent): no VMs-list icon, no detail-page Shelley button, and exe.dev never
   injects the shelley binary at VM creation. Stock exeuntu keeps Shelley fully
   working (icon, button, `https://<vm>.shelley.exe.xyz`).
-- **Preinstall.** Provisioning bakes in DuckDB, Quarto, doc-site tooling, agent
-  config, and team skills in one ~23-second pass onto stock exeuntu. Apex is
-  the lightweight document-level Markdown command; Quarto remains the website
-  publisher.
+- **Preinstall.** Provisioning installs DuckDB, Apex, doc-site tooling, agent
+  config, and team skills in one pass onto stock exeuntu. Apex handles both
+  document-level Markdown and multi-page documentation sites.
 - **Reproducible compute for GitLake.** The custom image's only real advantage
   was reproducibility via pinned image digests; that is replaced by the
   recipe-pinning model below (git tag/sha + pinned tools + vendored skills,
@@ -26,7 +25,7 @@ VM into an IV dev box.
 
 | File               | Role                                                                   |
 | ------------------ | ---------------------------------------------------------------------- |
-| `provision-iv.sh`  | Provisions the IV layer onto stock exeuntu (DuckDB + Quarto + agent config + skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`  | Provisions the IV layer onto stock exeuntu (DuckDB + Apex + agent config + skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh` | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).   |
 | `skills/`          | Vendored, pinned team skills — committed to the repo so they are frozen. |
 | `bin/`             | `render-site` + `provision-docsite` + `gen-llms-txt` — installed onto PATH. |
@@ -44,7 +43,7 @@ on the VM, run `provision-iv.sh`, and you get the same result.
   and there is no version/digest selector on `ssh exe.dev new`. Pinning it to a
   custom registry digest is exactly what breaks Shelley. Instead,
   `provision-iv.sh` records it in `~/iv-provision.lock` (exeuntu image revision,
-  Shelley version, installed DuckDB/Quarto/AWS/Tigris/rclone/herdr versions,
+  Shelley version, installed DuckDB/Apex/AWS/Tigris/rclone/herdr versions,
   skills count, manifest pin, and provisioning Git SHA).
 
 ## Versioning

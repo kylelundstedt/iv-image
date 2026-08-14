@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-"""Normalize the markdown twins and generate llms.txt (+ llms-full.txt).
+"""Normalize Markdown twins and generate llms.txt (+ llms-full.txt).
 
-A Quarto `post-render` hook. `format: gfm` co-emits a plain-markdown twin of
-every page, but with two warts this hook cleans up first:
+`render-md-site` copies every source beside its HTML output as a `.md` twin.
+Older Quarto-built sites may instead contain `*-gfm.md` twins, so the
+normalization path remains backward compatible with those artifacts.
 
-  * Twins built from a .md *source* get a `-gfm` suffix (Quarto avoids colliding
-    the .md output with the .md input). We rename `foo-gfm.md` -> `foo.md` so the
-    twin sits at the same path as `foo.html` -- the convention an agent expects
-    (swap .html -> .md) -- and so the `.md` cross-links inside the twins resolve.
-  * A doc with both a frontmatter `title:` and a body `# Heading` renders a
-    redundant title block (a duplicate H1 + a bare date line) above the body.
-    We strip that generated block, leaving the authored content.
-
-Then it walks the cleaned twins and writes two discovery artifacts an AI agent
+Then this tool walks the twins and writes two discovery artifacts an AI agent
 can fetch instead of scraping HTML:
 
   llms.txt       -- a curated index (llmstxt.org convention): title, blurb, and a
@@ -24,13 +17,12 @@ Both land in the output dir alongside the HTML, so they are part of the sealed
 _site release and flow through any render -> gate -> promote pipeline like other
 rendered artifacts.
 
-Quarto sets QUARTO_PROJECT_OUTPUT_DIR when invoking post-render hooks; we fall
-back to _site for manual runs. Optional env vars:
+The output directory defaults to `_site`; `render-site` passes it explicitly.
+Optional environment variables:
 
-  SITE_TITLE   override the index title (otherwise from _quarto.yml's
-               website.title, else "Documentation")
-  SITE_BLURB   override the one-line blurb under the title (otherwise from
-               _quarto.yml's website.description, else "")
+  SITE_TITLE   override the index title (otherwise from `.site.yml`, then
+               legacy `_quarto.yml`, else "Documentation")
+  SITE_BLURB   override the one-line blurb under the title (same fallback order)
   SITE_URL     emit absolute links (e.g. https://iv.exe.xyz); otherwise links
                are relative to the site root, which an agent resolves against
                wherever it fetched llms.txt
@@ -58,6 +50,25 @@ def _strip_quotes(s: str) -> str:
             inner = inner.replace('\\"', '"').replace("\\n", "\n").replace("\\\\", "\\")
         return inner
     return s
+
+
+def read_site_meta() -> tuple[str | None, str | None]:
+    """Read top-level title/description from the lightweight `.site.yml`."""
+    path = Path(".site.yml")
+    if not path.exists():
+        return (None, None)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return (None, None)
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line or line[0].isspace() or line.lstrip().startswith("#"):
+            continue
+        key, sep, value = line.partition(":")
+        if sep and key in ("title", "description"):
+            values[key] = _strip_quotes(value.strip())
+    return (values.get("title"), values.get("description"))
 
 
 def read_quarto_meta() -> tuple[str | None, str | None]:
@@ -150,17 +161,31 @@ def read_quarto_meta() -> tuple[str | None, str | None]:
 def resolve_title_blurb() -> tuple[str, str]:
     """Resolve (title, blurb) for the index header.
 
-    Order: env (SITE_TITLE / SITE_BLURB) -> _quarto.yml (website.title /
-    website.description) -> generic fallback ("Documentation" / "").
+    Order: env (SITE_TITLE / SITE_BLURB) -> .site.yml -> legacy _quarto.yml ->
+    generic fallback ("Documentation" / "").
     """
     env_title = os.environ.get("SITE_TITLE")
     env_blurb = os.environ.get("SITE_BLURB")
     yaml_title, yaml_blurb = (None, None)
     if env_title is None or env_blurb is None:
-        yaml_title, yaml_blurb = read_quarto_meta()
+        yaml_title, yaml_blurb = read_site_meta()
+        if yaml_title is None or yaml_blurb is None:
+            legacy_title, legacy_blurb = read_quarto_meta()
+            yaml_title = yaml_title or legacy_title
+            yaml_blurb = yaml_blurb or legacy_blurb
     title = env_title or yaml_title or "Documentation"
     blurb = env_blurb or yaml_blurb or ""
     return (title, blurb)
+
+
+def strip_frontmatter(text: str) -> str:
+    """Remove leading YAML frontmatter from generated Markdown twins."""
+    if not text.startswith("---\n"):
+        return text
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return text
+    return text[end + 5 :].lstrip("\n")
 
 
 def strip_title_block(text: str) -> str:
@@ -227,7 +252,9 @@ def normalize_twins(out_dir: Path) -> None:
                 f"gen-llms-txt: skip rename, {target} already exists", file=sys.stderr
             )
             target = md
-        cleaned = strip_title_block(md.read_text(encoding="utf-8", errors="replace"))
+        cleaned = strip_frontmatter(
+            strip_title_block(md.read_text(encoding="utf-8", errors="replace"))
+        )
         if target != md:
             html = md.with_name(md.name[: -len("-gfm.md")] + ".html")
             if html.exists():
@@ -273,7 +300,10 @@ def title_for(path: Path, text: str) -> str:
 
 
 def main() -> int:
-    out_dir = Path(os.environ.get("QUARTO_PROJECT_OUTPUT_DIR", "_site"))
+    out_dir = Path(
+        os.environ.get("SITE_OUTPUT_DIR")
+        or os.environ.get("QUARTO_PROJECT_OUTPUT_DIR", "_site")
+    )
     if not out_dir.is_dir():
         print(f"gen-llms-txt: output dir not found: {out_dir}", file=sys.stderr)
         return 1
@@ -296,8 +326,8 @@ def main() -> int:
 
     if not pages:
         print(
-            "gen-llms-txt: no Markdown twins found; enable Quarto GFM output "
-            "and run this script as a post-render hook",
+            "gen-llms-txt: no Markdown twins found; render the site with "
+            "render-md-site first",
             file=sys.stderr,
         )
         return 1

@@ -6,10 +6,8 @@
 # live site after edits, just `render-site <repo>` again — no restart needed
 # (nginx serves whatever is in <repo>/_site).
 #
-# Uses the nginx already in the exeuntu base image (installed, disabled by
-# default). gzip cuts a typical Quarto page's payload ~80%+ (uncompressed
-# Bootstrap CSS/JS is heavy), with immutable cache headers on the hashed
-# site_libs/ assets. Node-free.
+# Uses nginx from the exeuntu base image. Generated assets receive long-lived
+# cache headers; text responses are compressed. Node-free.
 #
 # This is the ungoverned-simple publish; the governed render->gate->promote
 # loop is iv/infra/render-promote.md.
@@ -47,11 +45,11 @@ server {
                application/json image/svg+xml application/xml text/xml
                application/rss+xml application/atom+xml font/ttf;
 
-    # Hashed build assets are immutable -> cache hard; content assets -> a while.
+    # Generated/static assets are immutable within a rendered release.
     location /site_libs/ { expires 1y;  add_header Cache-Control "public, immutable"; }
     location /assets/    { expires 30d; add_header Cache-Control "public"; }
 
-    # Clean URLs + directory index (Quarto emits <page>/index.html).
+    # Resolve direct files and directory indexes for clean URLs.
     location / {
         try_files \$uri \$uri/ \$uri/index.html =404;
     }

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# PreToolUse hook: re-render the Quarto site before any `git push`, so the
-# locally-served _site/ stays in sync with what we're about to push. A failed
-# render exits 2 to block the push.
+# PreToolUse hook: re-render the Apex documentation site before any `git push`,
+# so the locally-served _site/ stays in sync. A failed render blocks the push.
 set -euo pipefail
 
 input=$(cat)
@@ -13,16 +12,12 @@ case "$cmd" in
 esac
 
 repo="${CLAUDE_PROJECT_DIR:-$PWD}"
-cd "$repo"
+renderer=$(command -v render-site || true)
+[[ -n "$renderer" ]] || renderer="$repo/bin/render-site"
 
-if ! command -v quarto >/dev/null; then
-  echo "render-before-push: quarto not on PATH; skipping render" >&2
+if "$renderer" "$repo" >&2; then
   exit 0
 fi
 
-if quarto render >&2; then
-  exit 0
-fi
-
-echo "render-before-push: 'quarto render' failed; blocking push" >&2
+echo "render-before-push: 'render-site' failed; blocking push" >&2
 exit 2

@@ -18,6 +18,12 @@ MODULE = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(MODULE)
 
 
+class StripFrontmatterTests(unittest.TestCase):
+    def test_removes_leading_yaml_frontmatter(self) -> None:
+        text = '---\ntitle: "Guide"\n---\n\n# Guide\n\nBody.\n'
+        self.assertEqual(MODULE.strip_frontmatter(text), "# Guide\n\nBody.\n")
+
+
 class StripTitleBlockTests(unittest.TestCase):
     def test_collapses_duplicate_title_with_only_date_metadata(self) -> None:
         text = "# Guide\n\n2026-06-18\n\n# Guide\n\nBody.\n"

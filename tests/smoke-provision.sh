@@ -10,7 +10,6 @@ expected_value() {
 }
 
 actual_duckdb=$(/usr/local/bin/duckdb --version | awk '{sub(/^v/, "", $1); print $1}')
-actual_quarto=$(/usr/local/bin/quarto --version 2>/dev/null | head -1 || true)
 actual_aws=$(/usr/local/bin/aws --version 2>&1 | sed -nE 's#aws-cli/([^ ]+).*#\1#p' || true)
 actual_tigris=$(/usr/local/bin/tigris --version | head -1 | sed 's/^v//')
 actual_rclone=$(/usr/local/bin/rclone version 2>/dev/null | sed -nE '1s/^rclone v?//p' || true)
@@ -22,9 +21,6 @@ actual_shelley_sha256=$(sha256sum /usr/local/bin/shelley | awk '{print $1}')
 actual_apex=$(/usr/local/bin/apex --version | awk 'NR == 1 {print $2}')
 
 [[ $actual_duckdb == "$(expected_value DUCKDB_VERSION)" ]]
-if [[ -n $actual_quarto ]]; then
-  [[ $actual_quarto == "$(expected_value QUARTO_VERSION)" ]]
-fi
 [[ $actual_aws == "$(expected_value AWS_CLI_VERSION)" ]]
 [[ $actual_tigris == "$(expected_value TIGRIS_VERSION)" ]]
 if [[ -n $actual_rclone ]]; then
@@ -36,6 +32,16 @@ fi
 [[ $actual_shelley_commit == "$(expected_value SHELLEY_COMMIT)" ]]
 [[ $actual_shelley_sha256 == "$(expected_value "SHELLEY_SHA256_$(dpkg --print-architecture | tr '[:lower:]' '[:upper:]')")" ]]
 [[ $actual_apex == "$(expected_value APEX_VERSION)" ]]
+
+# Apex 1.1.16 fixes silent 1024-character truncation in unified mode
+# (ApexMarkdown/apex#31). Keep a fleet smoke check so a future bump cannot
+# reintroduce content loss while still exiting successfully.
+long_line=$(python3 - <<'PY'
+print("a" * 4096 + "END-OF-LONG-LINE")
+PY
+)
+rendered_long_line=$(printf '%s\n' "$long_line" | /usr/local/bin/apex -m unified)
+grep -q 'END-OF-LONG-LINE' <<<"$rendered_long_line"
 
 for tool in render-site provision-docsite gen-llms-txt shot install-cloud-cli agentsview-source-daemon; do
   test -x "/usr/local/bin/$tool"
@@ -57,7 +63,6 @@ done < "$HOME/.agents/iv-team-skills.list"
 
 test -f "$lock"
 grep -qx "duckdb_version=$actual_duckdb" "$lock"
-grep -qx "quarto_version=$actual_quarto" "$lock"
 grep -qx "aws_cli_version=$actual_aws" "$lock"
 grep -qx "tigris_version=$actual_tigris" "$lock"
 grep -qx "rclone_version=$actual_rclone" "$lock"

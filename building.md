@@ -20,7 +20,7 @@ cd ~/iv-image
 $EDITOR provision-iv.sh
 ./tests/test-ssh-guard.sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v
-quarto render
+bin/render-site .
 # provision + tests/smoke-provision.sh on a disposable VM
 ```
 
