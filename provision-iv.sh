@@ -724,7 +724,43 @@ echo "== agent config =="
 mkdir -p "$HOME/.agents" "$HOME/.claude" "$HOME/.codex"
 install -m 0644 "$IV_REPO/agent/AGENTS.md" "$HOME/.agents/AGENTS.md"
 install -m 0755 "$IV_REPO/agent/ssh-guard.sh" "$HOME/.agents/ssh-guard.sh"
-install -m 0644 "$IV_REPO/agent/settings.json" "$HOME/.claude/settings.json"
+# MERGE the team Claude settings rather than overwriting them.
+#
+# Overwriting silently deleted hooks that a personal dotfiles overlay had spliced
+# in -- notably its SessionStart refresh-env hook, whose whole job is keeping
+# agent instructions current. The failure is invisible: the hook *script* survives
+# at ~/.agents/refresh-env.sh, so nothing looks missing; only the entry that calls
+# it is gone. Measured on iv-foundry-stage2 2026-08-18: settings.json mtime equal
+# to provisioned_utc to the second, .hooks.SessionStart absent, overlay present.
+#
+# The upgrade-vm skill mitigated this procedurally ("re-run the overlay after
+# provisioning"), which failed in practice -- and cannot self-heal, because a
+# refresh hook that lives in the clobbered file is exactly what would have
+# restored it.
+#
+# Merge rules: team keys win (this repo owns DISABLE_NON_ESSENTIAL_MODEL_CALLS and
+# the PreToolUse SSH guard), and any hook event the team file does not define is
+# kept verbatim. Events the team DOES define are replaced wholesale rather than
+# appended, so the guard cannot be duplicated. Without jq, fall back to the old
+# overwrite: provisioning must not fail on a minimal box, and jq is present on
+# every image we ship.
+if command -v jq >/dev/null 2>&1 && [[ -s $HOME/.claude/settings.json ]] \
+    && jq -e . "$HOME/.claude/settings.json" >/dev/null 2>&1; then
+  jq -s '(.[0]) as $existing | (.[1]) as $team
+    | ($existing * $team)
+    | .hooks = (($existing.hooks // {}) + ($team.hooks // {}))' \
+    "$HOME/.claude/settings.json" "$IV_REPO/agent/settings.json" \
+    > "$TMP/claude-settings.json"
+  if jq -e . "$TMP/claude-settings.json" >/dev/null 2>&1; then
+    install -m 0644 "$TMP/claude-settings.json" "$HOME/.claude/settings.json"
+    echo "  merged ~/.claude/settings.json (hook events: $(jq -r '(.hooks // {}) | keys | join(",")' "$HOME/.claude/settings.json"))"
+  else
+    echo "  [!] settings merge produced invalid JSON; wrote team defaults" >&2
+    install -m 0644 "$IV_REPO/agent/settings.json" "$HOME/.claude/settings.json"
+  fi
+else
+  install -m 0644 "$IV_REPO/agent/settings.json" "$HOME/.claude/settings.json"
+fi
 install -m 0644 "$IV_REPO/agent/codex-config.toml" "$HOME/.codex/config.toml"
 ln -sfn ../.agents/AGENTS.md "$HOME/.claude/CLAUDE.md"
 ln -sfn ../.agents/AGENTS.md "$HOME/.codex/AGENTS.md"

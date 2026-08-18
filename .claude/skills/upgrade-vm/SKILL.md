@@ -30,6 +30,32 @@ ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/iv-provision \
   && ~/iv-provision/tests/smoke-provision.sh ~/iv-provision"
 ```
 
+### Migrating a pre-3.0.0 VM (`~/iv-image`)
+
+VMs provisioned before the rename have the checkout at `~/iv-image` with an
+`origin` pointing at the old name. **Delete it and clone fresh** rather than
+renaming the directory and rewriting the remote: the checkout is a disposable
+artifact — it holds no VM state, everything it produces lives elsewhere
+(`~/iv-provision.lock`, `~/.local/bin`, `~/.agents`) — so a fresh clone is fewer
+moving parts and cannot leave behind a half-migrated remote, a stale detached
+HEAD, or local edits nobody meant to keep.
+
+```bash
+ssh -o ConnectTimeout=30 <vm>.exe.xyz "rm -rf ~/iv-image \
+  && git clone --quiet https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
+  && git -C ~/iv-provision checkout --detach <tag> \
+  && ~/iv-provision/provision-iv.sh \
+  && ~/iv-provision/tests/smoke-provision.sh ~/iv-provision"
+```
+
+Clone from **public `github.com`**, not `github.int.exe.xyz`: the old
+`repo-iv-image` integration targets a repository name that no longer resolves and
+returns HTTP 403. Check with `git -C ~/iv-image remote -v` before assuming which
+remote a VM has.
+
+If a VM has local commits in `~/iv-image`, stop and inspect — no VM worktree is
+authoritative, but neither should work be discarded silently.
+
 This re-pins tools and re-installs the vendored skills + agent config, and
 rewrites `~/iv-provision.lock`. Verify:
 
@@ -39,11 +65,20 @@ ssh -o ConnectTimeout=30 <vm>.exe.xyz "cat ~/iv-provision.lock"
 
 If `~/iv-provision` doesn't exist yet (older VM), clone it first — see `bootstrap.md`.
 
-**Then, if the VM has a personal dotfiles overlay (`~/dotfiles` exists),
-re-run it.** `provision-iv.sh` overwrites `~/.claude/settings.json` with the
-team default, which wipes any hooks the overlay spliced in (e.g. a SessionStart
-auto-refresh) — and a refresh hook that lives in the clobbered file cannot heal
-itself:
+**Re-running the personal overlay is no longer required for correctness.** Since
+3.0.0 `provision-iv.sh` *merges* `~/.claude/settings.json`, preserving hook events
+the team file does not define — so an overlay's `SessionStart` auto-refresh
+survives provisioning.
+
+It used to overwrite, which silently deleted that hook, and this step existed to
+repair it. That mitigation failed in practice: `iv-foundry-stage2` was provisioned
+2026-08-17 and found on 2026-08-18 with `.hooks.SessionStart` absent, the overlay
+still installed, and nobody having noticed — the hook *script* survives, so
+nothing looks broken. It also could never self-heal, since the refresh hook that
+would have restored it is the thing that got deleted.
+
+Still worth running if you want the overlay's own content refreshed (its
+`~/dotfiles` checkout pulled, new personal skills installed):
 
 ```bash
 ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/dotfiles && git pull --ff-only && ./install.sh"

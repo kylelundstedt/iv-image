@@ -87,6 +87,15 @@ for managed in duckdb aws tigris rclone herdr agentsview shelley apex; do
 done
 
 grep -q 'run as the VM login user, not with sudo' "$script"
+
+# Claude settings must be MERGED, not overwritten: overwriting silently deleted the
+# personal overlay's SessionStart refresh-env hook, and the mitigation (re-run the
+# overlay afterwards) both failed in practice and cannot self-heal, since the hook
+# that would restore it lives in the clobbered file.
+grep -q 'MERGE the team Claude settings' "$script" || {
+  echo "provisioner must merge ~/.claude/settings.json, not overwrite it" >&2
+  exit 1
+}
 grep -q 'SHELLEY_SKIP_VERSION_CHECK=true' "$script"
 
 # The socket must be stopped BEFORE the service. shelley.service is BindsTo= the
