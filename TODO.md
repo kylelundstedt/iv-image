@@ -8,25 +8,35 @@ research (custom-image / arm64 era) → `registry.md`.
 The team layer must stand alone: a fleet VM should provision fully without
 `kylelundstedt/dotfiles`. Ordered by severity.
 
-Done so far: `tailscale` is installed here (2026-08-18), and the `provisioning/`
-manifests moved in-tree, retiring `dotfiles-manifest.pin`. `provision-iv.sh` now
-has no functional dotfiles dependency. Also retire dotfiles'
-`diff-provisioning.sh`, which policed a pin that no longer exists — that edit
-belongs in the dotfiles repo, whose integration on this VM is read-only.
+Done so far (all 2026-08-18): `tailscale`, `uv`, `claude`, and `codex` are
+installed here, and the `provisioning/` manifests moved in-tree, retiring
+`dotfiles-manifest.pin`. `provision-iv.sh` now has no functional dotfiles
+dependency.
 
-- [ ] **Install `claude`, `codex`, uv, and node here.** Currently dotfiles.
-      Pinned in the script, *not* baked into the image — baking those measured
-      2.0 GB of stale shadowed duplicates fleet-wide (2026-07-28).
+`node`/fnm was considered and deliberately left to dotfiles: the only thing that
+needs it is `vendor-skills.sh`, which runs at authoring time and never on a VM.
+
+Still to do on the **dotfiles** side (its integration here is read-only, so these
+edits must happen elsewhere): retire `diff-provisioning.sh`, which policed a pin
+that no longer exists; move `claude`/`codex`/`uv` from `personal` to `team` in
+`tools.manifest`, since this repo now installs them and the manifest asserts
+`personal ∩ provision-iv.sh = ∅`; and drop the copy of
+`entire-push-exclude.txt` that moved to `provisioning/` here.
+
 - [ ] **Copy over the load-bearing rationale** now cross-linked into
       `dotfiles/agent_docs/` (`vm-disk-weight.md`, `exe-dev-remediation.md`
       Track 2) so `exeslim/FORK.md` and this repo stop dangling.
 
 ## Own the Entire ACR capture path
 
-Done 2026-08-18: the CLI (pinned 0.8.42, checksummed) and the
-`entire-agent-shelley` plugin (0.1.3) are installed by `provision-iv.sh`, recorded
-in the lock file, and `entire enable` is deliberately left out as a per-repo
-governance action. What remains:
+Done 2026-08-18: the CLI (pinned 0.8.42, checksummed), the
+`entire-agent-shelley` plugin (0.1.3), and the vendored
+`entire-agent-agentsview` adapter are installed by `provision-iv.sh` and recorded
+in the lock file; `entire enable` is deliberately left out as a per-repo
+governance action; `ave-adapters` is enrolled; and `entire-push-exclude.txt`
+moved into `provisioning/`. `entire-push-check` itself stays in dotfiles, being
+macOS-only and part of the auditing control plane rather than the audited VMs.
+What remains:
 
 - [ ] Decide whether `ave-adapters` should be enrolled. Entire is enabled in
       `fannie-sflpd*` and `iv-docs*` but in **none** of the nine `ave-adapters`
@@ -34,15 +44,6 @@ governance action. What remains:
       `iv-acr-required-v0` may reject at promotion. Because `.entire/` is tracked
       in git, enrolling is one `entire enable` plus one commit, inherited by all
       worktrees and future clones.
-- [ ] Two further Entire helpers are on `iv-foundry-stage2`'s PATH and are **not**
-      provisioned, both as fragile symlinks into directories that may move:
-      `entire-push-check` -> `~/dotfiles/maint/...` (fail-closed check that no repo
-      in the fleet holds an unpushed checkpoint — a governance control living in a
-      personal repo), and `entire-agent-agentsview` ->
-      `~/worktrees/iv-docs-fannie-memory/spikes/23-harness/...` (the AgentsView
-      external-agent adapter, pointing into a *spike worktree*). Decide which are
-      real fleet controls; those should be vendored and installed like the Shelley
-      plugin, not symlinked out of a checkout.
 - [ ] Re-qualify `entire-agent-shelley` against a current Entire CLI. The pin is
       0.8.42 because 0.1.3 was qualified only against it; upstream is at 0.10.1.
       Until then the CLI cannot be bumped without risking the capture path.

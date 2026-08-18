@@ -54,7 +54,7 @@ volatile, version-pinned tools.
 
 | File               | Role                                                                   |
 | ------------------ | ---------------------------------------------------------------------- |
-| `provision-iv.sh`  | Provisions the IV layer onto the IV base image (DuckDB + Apex + agent config + skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`  | Provisions the IV layer onto the IV base image (tailscale, agents, Entire, DuckDB, Apex, agent config, skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh` | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).   |
 | `skills/`          | Vendored, pinned team skills — committed to the repo so they are frozen. |
 | `bin/`             | `render-site` + `provision-docsite` + `gen-llms-txt` — installed onto PATH. |

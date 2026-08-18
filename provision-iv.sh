@@ -22,6 +22,20 @@ APEX_VERSION=1.1.16
 # capture path in the Phase 1 repositories. Re-qualify, then bump both together.
 ENTIRE_VERSION=0.8.42
 ENTIRE_PLUGIN_VERSION=0.1.3
+# Coding agents. Owned here rather than by the personal dotfiles so a fleet VM is
+# self-sufficient, and deliberately NOT baked into the base image: agents release
+# constantly, and baked copies went stale and sat shadowed by ~/.local/bin --
+# 2.0 GB of superseded duplicates measured fleet-wide 2026-07-28.
+#
+# Installed from each project's signed/checksummed release assets rather than the
+# `curl | bash` installers dotfiles used, so the version is pinned and verified.
+#
+# Both agents self-update. Like Shelley, a pinned install can therefore drift;
+# unlike Shelley there is no IV requirement for a specific build, so drift is
+# accepted and re-provisioning simply restores the pin.
+CLAUDE_CODE_VERSION=2.1.220
+CODEX_VERSION=0.146.0
+UV_VERSION=0.12.0
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
@@ -45,6 +59,17 @@ ENTIRE_SHA256_ARM64=b6eec74701b12536147023bb352460ad2739dfc7882a714822a6c363dddf
 # Arch-independent: the plugin is a shell/Python polyglot, not a compiled binary.
 # Matches SHA256SUMS at tag v0.1.3 and the hash recorded in its README.
 ENTIRE_PLUGIN_SHA256=1541c304ce86e7b80b74d91a01348daa6a38dd53e068c856c3d832880a55f64e
+# Vendored AgentsView adapter (see vendor/entire-agent-agentsview/README.md).
+ENTIRE_AGENTSVIEW_SHA256=801065264f065068f5e8da8e58af61669c24ee10a6b4dff2a2e411660f4de84e
+# claude: from the release's SHASUMS256.txt. codex: computed at pin time (the
+# release publishes .sigstore attestations, not a plain checksum file).
+# uv: from the asset's own .sha256 file.
+CLAUDE_CODE_SHA256_AMD64=e69e7f72d784c243bcc377a578ad9ff8e65ae14da672fbbf9f2ba7bf47eca7ec
+CLAUDE_CODE_SHA256_ARM64=a4f2e93621b1521731d1f132c83f8266384403ab29e14986d67e3b4a805bf454
+CODEX_SHA256_AMD64=5ba3b9405543953081f661d0854d266f76e2abbe51d41349355a36de7673776a
+CODEX_SHA256_ARM64=975bac91562abeedeb8f79636d51a86649b31f34a9de6a3bcb059565b6cf1f87
+UV_SHA256_AMD64=eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9
+UV_SHA256_ARM64=2c5d6e3092cc5223b10ff403880cc75121bf64e84644e7a0c69f643b0d89ac95
 
 if [[ $EUID -eq 0 ]]; then
   echo "provision-iv: run as the VM login user, not with sudo" >&2
@@ -68,6 +93,12 @@ case "$DPKG_ARCH" in
     APEX_SHA256=$APEX_SHA256_AMD64
     APEX_ASSET_ARCH=x86_64
     ENTIRE_SHA256=$ENTIRE_SHA256_AMD64
+    CLAUDE_CODE_SHA256=$CLAUDE_CODE_SHA256_AMD64
+    CLAUDE_CODE_ASSET_ARCH=x64
+    CODEX_SHA256=$CODEX_SHA256_AMD64
+    CODEX_ASSET_ARCH=x86_64
+    UV_SHA256=$UV_SHA256_AMD64
+    UV_ASSET_ARCH=x86_64
     ;;
   arm64)
     DUCKDB_SHA256=$DUCKDB_SHA256_ARM64
@@ -79,6 +110,12 @@ case "$DPKG_ARCH" in
     APEX_SHA256=$APEX_SHA256_ARM64
     APEX_ASSET_ARCH=aarch64
     ENTIRE_SHA256=$ENTIRE_SHA256_ARM64
+    CLAUDE_CODE_SHA256=$CLAUDE_CODE_SHA256_ARM64
+    CLAUDE_CODE_ASSET_ARCH=arm64
+    CODEX_SHA256=$CODEX_SHA256_ARM64
+    CODEX_ASSET_ARCH=aarch64
+    UV_SHA256=$UV_SHA256_ARM64
+    UV_ASSET_ARCH=aarch64
     ;;
   *) echo "provision-iv: unsupported dpkg architecture: $DPKG_ARCH" >&2; exit 1 ;;
 esac
@@ -122,6 +159,11 @@ shelley_commit() { shelley_info | jq -r '.commit // empty' 2>/dev/null || true; 
 apex_version() { /usr/local/bin/apex --version 2>/dev/null | awk 'NR == 1 {print $2}' || true; }
 tailscale_version() { tailscale version 2>/dev/null | head -1 || true; }
 entire_version() { "$HOME/.local/bin/entire" --version 2>/dev/null | sed -nE '1s/^Entire CLI //p' || true; }
+uv_version() { "$HOME/.local/bin/uv" --version 2>/dev/null | awk '{print $2}' || true; }
+# `claude --version` prints e.g. "2.1.220 (Claude Code)".
+claude_code_version() { "$HOME/.local/bin/claude" --version 2>/dev/null | awk '{print $1}' || true; }
+# `codex --version` prints e.g. "codex-cli 0.146.0".
+codex_version() { "$HOME/.local/bin/codex" --version 2>/dev/null | awk '{print $NF}' || true; }
 entire_plugin_version() {
   local p="$HOME/.config/entire/shelley-hooks/bin/entire-agent-shelley"
   [[ -x $p ]] || return 0
@@ -446,10 +488,88 @@ install_entire_plugin() {
   [[ $(sha256sum "$dest" | awk '{print $1}') == "$ENTIRE_PLUGIN_SHA256" ]]
 }
 
+# entire-agent-agentsview: the attach-only Entire adapter over AgentsView's
+# normalized archive -- ADR 0010's backfill/reconciliation path across agents,
+# and the only one that can attach Claude Code or Codex sessions.
+#
+# Vendored (vendor/entire-agent-agentsview/) rather than symlinked. It was on
+# PATH pointing into a *spike worktree*
+# (~/worktrees/iv-docs-fannie-memory/spikes/23-harness/), so it broke if that
+# branch's worktree was pruned and did not survive a recreate at all. iv-docs
+# stays canonical; the pin here fails provisioning if the vendored copy drifts.
+install_entire_agentsview_adapter() {
+  local src="$IV_REPO/vendor/entire-agent-agentsview/entire-agent-agentsview"
+  local dest="$HOME/.local/bin/entire-agent-agentsview"
+  local actual=""
+  [[ ! -f $src ]] && { echo "== Entire AgentsView adapter (vendored copy missing; skipped) =="; return; }
+  [[ ! -x $dest ]] || actual=$(sha256sum "$dest" | awk '{print $1}')
+  echo "== Entire AgentsView adapter (installed: ${actual:0:12}${actual:+...}) =="
+  [[ $actual == "$ENTIRE_AGENTSVIEW_SHA256" ]] && return
+  printf '%s  %s\n' "$ENTIRE_AGENTSVIEW_SHA256" "$src" | sha256sum -c -
+  mkdir -p "$HOME/.local/bin"
+  # Replace a symlink into a checkout with a real file.
+  [[ ! -L $dest ]] || rm -f "$dest"
+  install -m 0755 "$src" "$dest"
+}
+
+# uv. Not merely a convenience: ~/.local/bin/python3 on these VMs is uv-managed,
+# and entire-agent-shelley's launcher resolves ENTIRE_SHELLEY_PYTHON, then
+# ~/.local/bin/python3, then python3 on PATH -- precisely because the minimal base
+# has no system interpreter and Shelley's service PATH excludes user paths. The
+# ACR capture path therefore depends on this.
+install_uv() {
+  local actual
+  actual=$(uv_version)
+  echo "== uv $UV_VERSION ($UV_ASSET_ARCH; installed: ${actual:-missing}) =="
+  [[ $actual == "$UV_VERSION" ]] && return
+  local dir="uv-${UV_ASSET_ARCH}-unknown-linux-gnu"
+  download_verified \
+    "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${dir}.tar.gz" \
+    "$UV_SHA256" "$TMP/uv.tar.gz"
+  mkdir -p "$TMP/uv" "$HOME/.local/bin"
+  tar -xzf "$TMP/uv.tar.gz" -C "$TMP/uv"
+  install -m 0755 "$TMP/uv/$dir/uv" "$HOME/.local/bin/uv"
+  install -m 0755 "$TMP/uv/$dir/uvx" "$HOME/.local/bin/uvx"
+  [[ $(uv_version) == "$UV_VERSION" ]]
+}
+
+install_claude_code() {
+  local actual
+  actual=$(claude_code_version)
+  echo "== Claude Code $CLAUDE_CODE_VERSION ($CLAUDE_CODE_ASSET_ARCH; installed: ${actual:-missing}) =="
+  [[ $actual == "$CLAUDE_CODE_VERSION" ]] && return
+  download_verified \
+    "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/claude-linux-${CLAUDE_CODE_ASSET_ARCH}.tar.gz" \
+    "$CLAUDE_CODE_SHA256" "$TMP/claude.tar.gz"
+  mkdir -p "$TMP/claude" "$HOME/.local/bin"
+  tar -xzf "$TMP/claude.tar.gz" -C "$TMP/claude"
+  install -m 0755 "$TMP/claude/claude" "$HOME/.local/bin/claude"
+  [[ $(claude_code_version) == "$CLAUDE_CODE_VERSION" ]]
+}
+
+install_codex() {
+  local actual
+  actual=$(codex_version)
+  echo "== Codex $CODEX_VERSION ($CODEX_ASSET_ARCH; installed: ${actual:-missing}) =="
+  [[ $actual == "$CODEX_VERSION" ]] && return
+  # musl build: static, so it does not care what libc the base image ships.
+  download_verified \
+    "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-${CODEX_ASSET_ARCH}-unknown-linux-musl.tar.gz" \
+    "$CODEX_SHA256" "$TMP/codex.tar.gz"
+  mkdir -p "$TMP/codex" "$HOME/.local/bin"
+  tar -xzf "$TMP/codex.tar.gz" -C "$TMP/codex"
+  install -m 0755 "$TMP/codex/codex-${CODEX_ASSET_ARCH}-unknown-linux-musl" "$HOME/.local/bin/codex"
+  [[ $(codex_version) == "$CODEX_VERSION" ]]
+}
+
 remove_legacy_quarto
 install_tailscale
+install_uv
+install_claude_code
+install_codex
 install_entire
 install_entire_plugin
+install_entire_agentsview_adapter
 install_duckdb
 install_tigris
 install_herdr
@@ -703,6 +823,9 @@ LOCK="$HOME/iv-provision.lock"
   echo "tailscale_version=$(tailscale_version)"
   echo "entire_version=$(entire_version)"
   echo "entire_plugin_version=$(entire_plugin_version)"
+  echo "uv_version=$(uv_version)"
+  echo "claude_code_version=$(claude_code_version)"
+  echo "codex_version=$(codex_version)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"
 

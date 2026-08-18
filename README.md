@@ -64,6 +64,12 @@ The CLI pin is **not** "latest" on purpose: `entire-agent-shelley` 0.1.3 is
 qualified only against Entire CLI 0.8.42, and 0.10.1 is already published.
 Re-qualify the plugin before bumping the CLI, and bump both together.
 
+Also installed: the vendored **`entire-agent-agentsview`** adapter
+(`vendor/entire-agent-agentsview/`), ADR 0010's attach-only backfill and
+reconciliation path, and the only one that can attach Claude Code or Codex
+sessions to a checkpoint. It was previously on `PATH` as a symlink into a *spike
+worktree*, so it broke if that worktree was pruned.
+
 Provisioning stops at the mechanism. It does **not** run `entire enable`, because
 that writes `.entire/settings.json` and git hooks into a repository — a per-repo
 decision about which repositories are approved for capture, not a machine
@@ -205,11 +211,12 @@ and this script continuing to carry the volatile, version-pinned tools. See
 
 | File                    | Role                                                                                                                                                       |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provision-iv.sh`       | Provisions the IV layer onto the IV base image (DuckDB, Apex, tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`       | Provisions the IV layer onto the IV base image (tailscale, uv, claude, codex, Entire + plugins, DuckDB, Apex, tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh`      | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                                      |
 | `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
 | `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand aws/azure/gcloud) — installed onto PATH.                                 |
 | `agent/`                | Team agent config: `AGENTS.md`, Claude Code `settings.json`, Codex `config.toml`, MCP setup.                                                               |
+| `vendor/`               | Third-party/IV code vendored with a SHA pin verified at install (`entire-agent-agentsview`).                                                               |
 | `provisioning/`         | Declarative source for the team layer: `skills.manifest`, `mcp.manifest`, `agents-shared.md`. `vendor-skills.sh` reads these; nothing is fetched from another repository. |
 | `tests/`                | Validation suite: `smoke-provision.sh` (run on a VM after provisioning), `test-provision.sh`, `test-ssh-guard.sh`, Python unit tests — run by CI.          |
 | `.claude/skills/`       | Project-level skills for agents working in this repo (`join-tailnet`, `upgrade-vm`) — not vendored onto VMs.                                               |
