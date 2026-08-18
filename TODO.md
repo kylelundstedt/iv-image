@@ -8,15 +8,6 @@ research (custom-image / arm64 era) → `registry.md`.
 The team layer must stand alone: a fleet VM should provision fully without
 `kylelundstedt/dotfiles`. Ordered by severity.
 
-- [ ] **Install `tailscale` here, with `--ssh`.** Today `provision-iv.sh` only
-      *checks* `tailscale ip -4`; the binary arrives via dotfiles `install.sh`,
-      and the `exeslim-dev` base does not carry it. A freshly provisioned VM
-      therefore cannot run `join-tailnet` at all — the hardest dependency in the
-      set. Pin + checksum like the other tools (not in the image: tailscale
-      releases too often, and image bumps mean fleet recreates). Pass `--ssh`:
-      `kgl-songs` joined without it and sat at `Permission denied (publickey)`
-      despite correct tags; the tell is an empty `sshHostKeys` in
-      `tailscale status --json`.
 - [ ] **Move the provisioning manifests in.** `vendor-skills.sh` fetches
       `skills.manifest`, `mcp.manifest`, and `agents-shared.md` from
       `raw.githubusercontent.com/kylelundstedt/dotfiles` at
@@ -62,15 +53,6 @@ them there by hand.
 
 ## AgentsView
 
-- [ ] **Write `auth_token` into `~/.agentsview/config.toml`** whenever the
-      source daemon's `source.env` is written, using the same per-host token at
-      mode 0600. The daemon runs `--require-auth`, and the CLI sends no token, so
-      `agentsview projects|health` fail with *"local daemon owns the SQLite
-      archive but is not responding"* — which reads like SQLite corruption and is
-      really a 401. Every VM with the source daemon enabled has this breakage;
-      `iv-foundry-stage2` was patched by hand on 2026-08-18.
-- [ ] **Rotate `~/.agentsview/debug.log`.** Unbounded: 10 MB on
-      `iv-foundry-stage2`, truncated by hand.
 - [ ] Upstream request: throttle re-sync. Every Shelley write to
       `shelley.db-wal` retriggers a full reprojection of all conversations
       (~every 15s while active; 7.1% of one core sustained, 344 MB RSS).

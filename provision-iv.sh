@@ -105,6 +105,7 @@ shelley_info() { /usr/local/bin/shelley version 2>/dev/null || true; }
 shelley_version() { shelley_info | jq -r '.version // empty' 2>/dev/null || true; }
 shelley_commit() { shelley_info | jq -r '.commit // empty' 2>/dev/null || true; }
 apex_version() { /usr/local/bin/apex --version 2>/dev/null | awk 'NR == 1 {print $2}' || true; }
+tailscale_version() { tailscale version 2>/dev/null | head -1 || true; }
 
 install_duckdb() {
   local actual
@@ -292,7 +293,64 @@ install_apex() {
   [[ $(apex_version) == "$APEX_VERSION" ]]
 }
 
+# Tailscale. Installed here rather than in the base image because it releases
+# frequently and exe.dev fixes a VM's image at creation: in the image, every bump
+# would be a fleet recreate; here it is a re-provision.
+#
+# Installed from Tailscale's own signed apt repository rather than
+# `curl -fsSL https://tailscale.com/install.sh | sh` (what the personal dotfiles
+# used, and the reason a fleet VM could not join the tailnet without them). The
+# repo gives dpkg-managed upgrades, a signed index, and `iv-apt-upgrade.timer`
+# picks up security updates for free -- none of which piping a script provides.
+# No version pin: an out-of-date tailscaled loses tailnet connectivity, which is
+# worse than the drift a pin would prevent, and the client is not part of the
+# reproducible-build surface the way duckdb/apex/shelley are.
+install_tailscale() {
+  local actual
+  actual=$(tailscale_version)
+  echo "== Tailscale (installed: ${actual:-missing}) =="
+  if ! command -v tailscale >/dev/null 2>&1; then
+    if [[ ! -f /usr/share/keyrings/tailscale-archive-keyring.gpg ]]; then
+      local codename
+      codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+      curl -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
+        | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+      printf 'deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu %s main\n' \
+        "$codename" | sudo tee /etc/apt/sources.list.d/tailscale.list >/dev/null
+    fi
+    sudo apt-get update -qq
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tailscale
+  fi
+
+  # The daemon must be running before `join-tailnet` can authenticate. Enabling
+  # it does NOT join the tailnet or touch state: membership stays an explicit
+  # decision (see tailnet.md), this only makes the join possible.
+  sudo systemctl enable --now tailscaled
+
+  # Ensure Tailscale SSH on a node that is already up. kgl-songs joined without
+  # --ssh and then refused connections with `Permission denied (publickey)`
+  # despite correct tags, because Tailscale was not brokering auth at all.
+  # `set --ssh` is non-disruptive and needs no re-auth; on a node that has never
+  # joined this is skipped, and `join-tailnet` passes --ssh itself.
+  #
+  # Read the LOCAL pref (`tailscale debug prefs` -> RunSSH), not sshHostKeys from
+  # `tailscale status --json`: sshHostKeys is what a *peer* advertises and is
+  # absent from .Self entirely, so testing it here always reports "off" and
+  # re-runs set --ssh on every provision (measured on iv-foundry-stage2, whose
+  # RunSSH was already true). sshHostKeys remains the right check when
+  # diagnosing a *remote* node from another machine.
+  if tailscale status >/dev/null 2>&1; then
+    local run_ssh
+    run_ssh=$(tailscale debug prefs 2>/dev/null | jq -r '.RunSSH // false' 2>/dev/null || echo false)
+    if [[ $run_ssh != true ]]; then
+      echo "Tailscale SSH disabled (RunSSH=$run_ssh); enabling with 'tailscale set --ssh'"
+      sudo tailscale set --ssh || true
+    fi
+  fi
+}
+
 remove_legacy_quarto
+install_tailscale
 install_duckdb
 install_tigris
 install_herdr
@@ -343,6 +401,50 @@ if [[ -s $SOURCE_ENV ]] \
     && grep -qE '^AGENTSVIEW_AUTH_TOKEN=.+$' "$SOURCE_ENV" \
     && tailscale ip -4 >/dev/null 2>&1; then
   chmod 600 "$SOURCE_ENV"
+
+  # Give the *CLI* the same token the daemon requires. The service runs
+  # `--require-auth`, but `agentsview projects|health|sync` send no Authorization
+  # header, so the authenticated endpoints answer 401 and the CLI reports it as
+  #   fatal: ... local daemon owns the SQLite archive but is not responding
+  # which reads like database corruption and sends you looking at SQLite. It is
+  # a 401. Measured on iv-foundry-stage2 2026-08-18: /api/v1/health returned 401
+  # without the token and 200 with it, while /health (unauthenticated) returned
+  # 200 the whole time and the daemon was healthy throughout. Every VM running
+  # this service has had an unusable CLI since --require-auth was introduced.
+  local av_token av_config
+  av_token=$(sed -n 's/^AGENTSVIEW_AUTH_TOKEN=//p' "$SOURCE_ENV" | head -1)
+  av_config="$HOME/.agentsview/config.toml"
+  if [[ -n $av_token ]]; then
+    mkdir -p "$HOME/.agentsview"
+    touch "$av_config"
+    chmod 600 "$av_config"
+    if grep -qE '^auth_token[[:space:]]*=' "$av_config"; then
+      sed -i "s|^auth_token[[:space:]]*=.*|auth_token = \"$av_token\"|" "$av_config"
+    else
+      printf 'auth_token = "%s"\n' "$av_token" >> "$av_config"
+    fi
+  fi
+
+  # Rotate agentsview's debug log. It is unbounded: every Shelley write to
+  # shelley.db-wal retriggers a full reprojection and logs it, which reached
+  # 10 MB on iv-foundry-stage2 (~15s cadence while an agent is active).
+  # copytruncate because the long-lived daemon holds the fd and will not reopen
+  # on rename -- a plain rotate would leave it writing to an unlinked inode.
+  if command -v logrotate >/dev/null 2>&1; then
+    sudo tee /etc/logrotate.d/iv-agentsview >/dev/null <<ROTATE
+$HOME/.agentsview/debug.log {
+    size 8M
+    rotate 3
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su $USER $(id -gn)
+}
+ROTATE
+  fi
+
   sudo loginctl enable-linger "$USER"
   uctl daemon-reload
   uctl enable --now agentsview-source.service
@@ -499,8 +601,9 @@ LOCK="$HOME/iv-provision.lock"
   echo "herdr_version=$(herdr_version)"
   echo "agentsview_version=$(agentsview_version)"
   echo "apex_version=$(apex_version)"
+  echo "tailscale_version=$(tailscale_version)"
   echo "dotfiles_manifest_pin=$(tr -d '[:space:]' < "$IV_REPO/dotfiles-manifest.pin" 2>/dev/null || echo unknown)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"
 
-echo "== IV layer provisioned on stock exeuntu (see $LOCK) =="
+echo "== IV layer provisioned (see $LOCK) =="

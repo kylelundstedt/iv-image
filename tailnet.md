@@ -8,13 +8,12 @@ A newly created VM starts off the tailnet. There is no baked bootstrap script
 and no automatic join. A VM stays off the tailnet until the `join-tailnet`
 workflow explicitly enables the daemon and runs `tailscale up`.
 
-> **Known gap (2026-08-18).** On the `exeslim-dev` base, `tailscale` is not
-> installed *at all* — neither this repo nor the image provides it; it has been
-> arriving via the personal dotfiles `install.sh`. So `join-tailnet` cannot
-> succeed on a freshly provisioned VM until the tailscale install moves into
-> `provision-iv.sh` (pinned + checksummed, with `--ssh`). Tracked in `TODO.md`.
-> Text below that says `tailscaled` "ships disabled" describes the exeuntu base,
-> not the current one.
+> **Resolved 2026-08-18.** `provision-iv.sh` now installs `tailscale` from
+> Tailscale's signed apt repository and enables `tailscaled`. Until then the
+> client was not provided by this repo *or* the `exeslim-dev` base — it arrived
+> via the personal dotfiles `install.sh` — so `join-tailnet` could not succeed on
+> a freshly provisioned VM at all. Enabling the daemon does not join the tailnet;
+> membership stays the explicit decision described below.
 
 This is deliberate. Auto-join-on-boot put every VM on the tailnet whether or not
 it belonged there, and the logic to do it had to live somewhere — a per-account

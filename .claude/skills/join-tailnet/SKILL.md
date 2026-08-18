@@ -47,10 +47,34 @@ REMOTE
 
 After it joins, use `ssh <vm>` (Tailscale SSH) for everything else.
 
+## Preflight: confirm the integration is actually attached
+
+Do this **first**. The mint fails at the OAuth exchange with an opaque proxy
+error when `tailscale-api` is missing, and nothing connects that to a tag that
+was never set at creation time.
+
+```bash
+ssh -o ConnectTimeout=30 <vm>.exe.xyz \
+  "curl -s https://reflection.int.exe.xyz/integrations | jq -r '.integrations[].name' | grep -qx tailscale-api \
+     && echo 'tailscale-api: attached' \
+     || echo 'tailscale-api: MISSING -- VM was not created with --tag=iv'"
+```
+
+If it is missing, attach it before going further (`ssh exe.dev tag <vm> iv`, or
+`ssh exe.dev integrations attach tailscale-api vm:<vm>`).
+
+This is not hypothetical: `iv-foundry-stage2` sits on the tailnet with **no** `iv`
+tag and **no** `tailscale-api` integration, so it joined by a path it can no
+longer reproduce and cannot rejoin if it ever drops off. Worth auditing the rest
+of the fleet the same way.
+
 ## Prerequisites
 
 - The VM must be created with `--tag=iv` so the `tailscale-api` integration is attached.
-- `tailscaled` is enabled+started by the join command above — stock exeuntu ships it disabled, so don't assume it's already running.
+- `tailscale` itself is installed by `provision-iv.sh` (since 2026-08-18), which
+  also enables `tailscaled`. On a VM that has not been provisioned yet, install
+  it first — the `exeslim-dev` base does not carry it, and neither did stock
+  exeuntu in a started state.
 
 ## SSH discipline
 
