@@ -4,18 +4,19 @@ title: "Consuming"
 
 ## Creating a VM
 
-VMs are created from stock `boldsoftware/exeuntu` (the default — no `--image`
-flag), then provisioned by running `provision-iv.sh` from this repo at a pinned
-tag/sha:
+VMs are created from the IV dev base image, then provisioned by running
+`provision-iv.sh` from this repo at a pinned tag/sha:
 
 ```bash
-# 1. Create a VM from stock exeuntu (default image — NO --image flag)
-ssh exe.dev new --name=<vm> --tag=iv
+# 1. Create a VM from the IV dev base. Pin the immutable build ID, never
+#    :latest — exe.dev caches mutable tags.
+ssh exe.dev new --name=<vm> --tag=iv \
+  --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 
 # 2. Clone at a pinned tag/sha and provision. This repo is public: no
 #    integration, no credential, no proxy host.
-ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
-  && git -C ~/iv-image checkout <tag-or-sha> && ~/iv-image/provision-iv.sh"
+ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
+  && git -C ~/iv-provision checkout <tag-or-sha> && ~/iv-provision/provision-iv.sh"
 ```
 
 For reproducibility, pin by checking out a Git tag/sha of this repo before
@@ -38,7 +39,7 @@ the join step needs it to mint the key. See `tailnet.md` for the full flow.
 
 ## Upgrading to a new revision
 
-To move a VM to a newer provisioning recipe, update `~/iv-image` to the target
+To move a VM to a newer provisioning recipe, update `~/iv-provision` to the target
 tag/sha and re-run `provision-iv.sh`. This is normally an in-place operation: it
 preserves the disk and tailnet identity while refreshing pinned tools, vendored
 skills, agent configuration, and `~/iv-provision.lock`.

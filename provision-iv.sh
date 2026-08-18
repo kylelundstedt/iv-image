@@ -81,7 +81,7 @@ download_verified() {
 }
 
 remove_legacy_quarto() {
-  # Reclaim installations created by older iv-image releases. Do not touch a
+  # Reclaim installations created by older iv-provision releases. Do not touch a
   # user-managed quarto binary unless it resolves into the old /opt/quarto tree.
   local target dir
   if [[ -L /usr/local/bin/quarto ]]; then
@@ -480,8 +480,14 @@ LOCK="$HOME/iv-provision.lock"
   echo "provisioned_utc=$(date -u +%FT%TZ)"
   echo "provision_repo_sha=$(git -C "$IV_REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
   echo "arch=$DPKG_ARCH"
-  echo "exeuntu_image_revision=$(jq -r '.Labels["org.opencontainers.image.revision"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
-  echo "exeuntu_image_created=$(jq -r '.Labels["org.opencontainers.image.created"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
+  # These were named exeuntu_* until 2026-08-18, which was actively misleading:
+  # IV VMs run ghcr.io/kylelundstedt/exeslim-dev, so the field labelled "exeuntu"
+  # had been silently recording an exeslim revision. Record the title and
+  # version too, so a lock file says WHICH image, not just which commit.
+  echo "base_image_title=$(jq -r '.Labels["org.opencontainers.image.title"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
+  echo "base_image_version=$(jq -r '.Labels["org.opencontainers.image.version"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
+  echo "base_image_revision=$(jq -r '.Labels["org.opencontainers.image.revision"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
+  echo "base_image_created=$(jq -r '.Labels["org.opencontainers.image.created"] // "unknown"' /exe.dev/etc/image.conf 2>/dev/null || echo unknown)"
   echo "shelley_version=$(shelley_version)"
   echo "shelley_tag=$SHELLEY_TAG"
   echo "shelley_commit=$(shelley_commit)"

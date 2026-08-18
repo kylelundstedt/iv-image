@@ -1,12 +1,13 @@
 ---
 name: upgrade-vm
-description: Upgrade an IV exe.dev VM's software layer by re-provisioning it in place at a newer iv-image commit (no recreate, no disk wipe). Falls back to a full destroy/recreate only when a fresh disk or a base change is actually required.
+description: Upgrade an IV exe.dev VM's software layer by re-provisioning it in place at a newer iv-provision commit (no recreate, no disk wipe). Falls back to a full destroy/recreate only when a fresh disk or a base change is actually required.
 ---
 
 # Upgrade VM
 
-IV VMs run **stock `boldsoftware/exeuntu`** (which keeps Shelley) and get their
-tooling from `provision-iv.sh` in the `iv-image` repo. So "upgrading" a VM is
+IV VMs run the **`ghcr.io/kylelundstedt/exeslim-dev`** base (which keeps Shelley
+via `LABEL exe.dev/install-shelley=true` plus its own units) and get their
+tooling from `provision-iv.sh` in the `iv-provision` repo. So "upgrading" a VM is
 normally just **re-running the provisioner at a newer commit** — in place, no
 recreate, no disk wipe, no tailnet churn.
 
@@ -17,16 +18,16 @@ pick up.
 ## Path A — Re-provision in place (default)
 
 The user provides the **VM name** and optionally a **target tag/sha** of the
-`iv-image` repo (defaults to the latest on the default branch).
+`iv-provision` repo (defaults to the latest on the default branch).
 
 **One SSH command at a time** — never parallel SSH to `*.exe.xyz` or `exe.dev`.
 
 ```bash
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/iv-image \
+ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/iv-provision \
   && git fetch --tags --quiet \
   && git checkout --detach <tag-or-sha> \
-  && ~/iv-image/provision-iv.sh \
-  && ~/iv-image/tests/smoke-provision.sh ~/iv-image"
+  && ~/iv-provision/provision-iv.sh \
+  && ~/iv-provision/tests/smoke-provision.sh ~/iv-provision"
 ```
 
 This re-pins tools and re-installs the vendored skills + agent config, and
@@ -36,7 +37,7 @@ rewrites `~/iv-provision.lock`. Verify:
 ssh -o ConnectTimeout=30 <vm>.exe.xyz "cat ~/iv-provision.lock"
 ```
 
-If `~/iv-image` doesn't exist yet (older VM), clone it first — see `bootstrap.md`.
+If `~/iv-provision` doesn't exist yet (older VM), clone it first — see `bootstrap.md`.
 
 **Then, if the VM has a personal dotfiles overlay (`~/dotfiles` exists),
 re-run it.** `provision-iv.sh` overwrites `~/.claude/settings.json` with the
@@ -109,13 +110,19 @@ ssh -O exit <vm> 2>/dev/null || true
 ssh -O exit <vm>.exe.xyz 2>/dev/null || true
 ```
 
-### 5. Create the new VM (stock exeuntu — no `--image`)
+### 5. Create the new VM (IV dev base)
 
 Use the exe.dev VM tag `iv` so the required integrations are attached. This is
 not the provisioning repository release tag.
 
+Recreate is also the **only** way to pick up a newer base image — exe.dev fixes
+a VM's image at creation. Take the current immutable build ID from the
+[package page](https://github.com/kylelundstedt/exeslim/pkgs/container/exeslim-dev);
+never `:latest`.
+
 ```bash
-ssh -o ConnectTimeout=30 exe.dev new --name=<vm> --tag=iv
+ssh -o ConnectTimeout=30 exe.dev new --name=<vm> --tag=iv \
+  --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 ```
 
 If the user specified integrations, attach them:
@@ -138,7 +145,7 @@ If it fails, wait 30-60s and try once more.
 ### 7. Rejoin the tailnet + provision
 
 Use the `join-tailnet` skill, then run the full bring-up from `bootstrap.md`
-(attach `github-kylelundstedt-iv-image`, clone, `provision-iv.sh`, then clone the
+(attach `github-kylelundstedt-iv-provision`, clone, `provision-iv.sh`, then clone the
 work repo + `provision-docsite`).
 
 ### 8. Verify

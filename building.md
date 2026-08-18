@@ -2,21 +2,33 @@
 title: "Maintaining"
 ---
 
-There is no image build anymore. VMs run stock `boldsoftware/exeuntu` and get
-the IV layer from `provision-iv.sh` at a pinned git tag/sha. To change what VMs
-receive, edit the provisioning script and/or the vendored skills, then commit
-and tag.
+There is no image build **in this repository**. The base images are built and
+published from [`kylelundstedt/exeslim`](https://github.com/kylelundstedt/exeslim)
+(`Dockerfile` → `exeslim`, `Dockerfile.dev` → `exeslim-dev`, both to GHCR by
+GitHub Actions on push plus a weekly rebuild for Ubuntu security updates).
+
+This repository owns the layer above that: VMs get the IV tooling from
+`provision-iv.sh` at a pinned git tag/sha. To change what VMs receive, edit the
+provisioning script and/or the vendored skills, then commit and tag.
+
+Which repo to change:
+
+| Change | Repo | Reaches existing VMs |
+| ------ | ---- | -------------------- |
+| OS packages, systemd units, image labels | `exeslim` | only by recreating the VM |
+| Pinned tool versions, skills, agent config | this repo | re-provision in place (~23s) |
+| OS security patches | neither — `iv-apt-upgrade.timer` | automatically, daily |
 
 ## Changing tool versions
 
 Tool versions and per-architecture checksums are pinned inside
 `provision-iv.sh`. Change both the version and checksum values, run the local
-validation suite, test provisioning on a disposable stock exeuntu VM, then
+validation suite, test provisioning on a disposable VM, then
 commit and tag the revision. The provisioner checks installed versions and
 upgrades mismatches when it is re-run.
 
 ```bash
-cd ~/iv-image
+cd ~/iv-provision
 $EDITOR provision-iv.sh
 ./tests/test-ssh-guard.sh
 python3 -m unittest discover -s tests -p 'test_*.py' -v

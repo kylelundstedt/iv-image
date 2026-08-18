@@ -1,27 +1,40 @@
-# iv-image
+# iv-provision
 
 The IV provisioning layer for exe.dev VMs: a script (`provision-iv.sh`) plus
-vendored skills and doc-site tooling that turn a stock `boldsoftware/exeuntu`
-VM into an IV dev box.
+vendored skills and doc-site tooling that turn a stock exe.dev VM into an IV
+dev box.
+
+> **Renamed from `iv-image` (2026-08-18).** The old name described something
+> this repository has never contained: there is no image here, and VMs are not
+> created from one built by this repo. It cost real confusion — "why doesn't a
+> new VM use our iv-image?" has a different answer depending on whether you
+> think `iv-image` is an image (it isn't) or a script (it is). The actual base
+> images live in [`kylelundstedt/exeslim`](https://github.com/kylelundstedt/exeslim)
+> and are published to GHCR. GitHub redirects clones and pushes from the old
+> name, so existing VM checkouts keep working; update their `origin` at the
+> next re-provision.
 
 **Full documentation:** the `*.qmd` / `*.md` files in this repo (`consuming.md`,
 `building.md`, `bootstrap.md`, `tailnet.md`, …). The hosted doc site was retired
 with the `iv-registry` VM (2026-07-14); any IV VM can serve it again with
-`provision-docsite ~/iv-image` (see `registry.md`).
+`provision-docsite ~/iv-provision` (see `registry.md`).
 
 ## Quick start
 
-VMs are created from stock `boldsoftware/exeuntu` (no `--image` flag), then
-provisioned by running `provision-iv.sh` from this repo at a pinned tag/sha.
+VMs are created from the IV base image, then provisioned by running
+`provision-iv.sh` from this repo at a pinned tag/sha.
 
 ```bash
-# 1. Create a VM from stock exeuntu (default image — NO --image flag)
-ssh exe.dev new --name=<vm> --tag=iv
+# 1. Create a VM from the IV dev base (exeslim-dev: slim, keeps Shelley).
+#    Pin the immutable build ID from the package page; never :latest.
+#    https://github.com/kylelundstedt/exeslim/pkgs/container/exeslim-dev
+ssh exe.dev new --name=<vm> --tag=iv \
+  --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 
 # 2. Clone at a pinned tag/sha and provision. This repo is public: no
 #    integration, no credential, no proxy host.
-ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
-  && git -C ~/iv-image checkout <tag-or-sha> && ~/iv-image/provision-iv.sh"
+ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
+  && git -C ~/iv-provision checkout <tag-or-sha> && ~/iv-provision/provision-iv.sh"
 ```
 
 The VM does not auto-join the tailnet; join on demand with the `join-tailnet`
@@ -50,7 +63,7 @@ mkdir -p ~/.config/agentsview
 printf 'AGENTSVIEW_AUTH_TOKEN=%s\n' '<unique-token>' \
   > ~/.config/agentsview/source.env
 chmod 600 ~/.config/agentsview/source.env
-~/iv-image/provision-iv.sh
+~/iv-provision/provision-iv.sh
 ```
 
 The user service binds only the VM's Tailscale IPv4 address on port `8080` and
@@ -72,15 +85,21 @@ overlay that never touches the team layer.
 
 ## Authoring boundary
 
-GitHub is the canonical source of truth. Author, review, merge, and push this
-repository from `klundstedt-mini` using the checkout at
-`~/github/kylelundstedt/iv-image`. The same host owns dotfiles authoring so
-cross-repo pin bumps and vendoring changes stay in one workflow.
+GitHub is the canonical source of truth. Changes land on `main` by pull request
+with CI green; **any host may author**, including a fleet VM with a writable repo
+integration attached.
 
-Ordinary project VMs consume iv-image read-only. Linux compatibility canaries
-are created on demand and remain read-only unless a dedicated writer is
-temporarily attached for an explicit push test; delete the canary after
-validation. No VM worktree is authoritative.
+This replaces the previous rule that only `klundstedt-mini` could author
+(changed 2026-08-18). Single-workstation authoring was never enforced by
+permissions — fleet VMs with the `repo-iv-provision` integration have always had
+push access — so it was a convention that mostly served to keep the fleet from
+fixing its own provisioner, and to serialise cross-repo pin bumps through one
+laptop. PR + CI is the guardrail that actually holds.
+
+What does still hold: no VM worktree is authoritative, and a checkout on a fleet
+VM is expected to sit detached at a release tag (see `consuming.md`). Linux
+compatibility canaries are created on demand and stay read-only unless a writer
+is deliberately attached; delete the canary after validation.
 
 ## General-purpose Markdown with Apex
 
@@ -108,9 +127,12 @@ per-page TOCs, stable links, and the site template.
 
 ## Why a script, not a custom image
 
-**Correction, 2026-07-28.** This section used to say a custom image "silently
-disables Shelley" and that stock exeuntu was therefore required. That is wrong,
-and it blocked the slim-base work for months. exe.dev supports an opt-in label —
+**Correction, 2026-07-28; resolved 2026-08-18.** This section used to say a
+custom image "silently disables Shelley" and that stock exeuntu was therefore
+required. That is wrong, and it blocked the slim-base work for months. The
+slim-base work has since shipped: IV VMs now run
+`ghcr.io/kylelundstedt/exeslim-dev`, so the question is settled by running code
+rather than argument. exe.dev supports an opt-in label —
 `ssh exe.dev doc customization`:
 
 > `LABEL exe.dev/install-shelley=true` makes exe.dev automatically install a
@@ -119,9 +141,11 @@ and it blocked the slim-base work for months. exe.dev supports an opt-in label �
 
 So a custom image loses Shelley only **by default**, not necessarily. What
 remains true is that a custom image is not recognised as "exeuntu", so anything
-keying off that (`EXEUNTU=1`, `/exe.dev/etc/image.conf` labels) is absent.
+keying off that (`EXEUNTU=1`) is absent — note `/exe.dev/etc/image.conf` *is*
+present on a custom-image VM and carries the image's own OCI labels, which is
+how `~/iv-provision.lock` records base provenance.
 
-The real reason this stays a script is different, and it survives the
+The real reason the *tooling* stays a script is different, and it survives the
 correction: **exe.dev fixes a VM's image at creation and offers no way to move a
 live VM onto a newer one** (`new`, `rm`, `restart`, `cp`, `resize` — `cp` clones
 the disk you already have). Every version bump in the pinned tool list at the
@@ -141,7 +165,7 @@ and this script continuing to carry the volatile, version-pinned tools. See
 
 | File                    | Role                                                                                                                                                       |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provision-iv.sh`       | Provisions the IV layer onto stock exeuntu (DuckDB, Apex, tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
+| `provision-iv.sh`       | Provisions the IV layer onto the IV base image (DuckDB, Apex, tigris/rclone, herdr, AgentsView, doc-site tools, agent config, skills); writes `~/iv-provision.lock`. |
 | `vendor-skills.sh`      | Refreshes the vendored skills snapshot in `skills/` (needs node/npx).                                                                                      |
 | `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
 | `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand aws/azure/gcloud) — installed onto PATH.                                 |

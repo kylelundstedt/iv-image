@@ -1,6 +1,6 @@
 # IV Agent Instructions
 
-Team-wide defaults for AI agents on iv-image VMs. Personal dotfiles layer on
+Team-wide defaults for AI agents on iv-provision VMs. Personal dotfiles layer on
 top — anything here can be overridden by `~/.agents/AGENTS.md` from your own
 dotfiles.
 
@@ -12,7 +12,7 @@ Team-specific sections live outside the markers.
 <!-- >>> shared: dotfiles provisioning/agents-shared.md >>> -->
 <!-- Canonical shared agent-instruction sections (Core decision 1 + plan item
 U6): the single source for the sections that appear in BOTH the IV team
-AGENTS.md (iv-image, vendored at the pinned dotfiles commit) and the personal
+AGENTS.md (iv-provision, vendored at the pinned dotfiles commit) and the personal
 AGENTS.md (agents/.agents/AGENTS.md, embedded verbatim between shared
 markers). Edit HERE; diff-provisioning.sh flags any copy that drifts. -->
 

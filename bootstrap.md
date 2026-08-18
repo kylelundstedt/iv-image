@@ -7,24 +7,46 @@ its own ownership — they are orchestrated in order, not merged into one script
 
 | Step | What                                          | Owned by                                   |
 | ---- | --------------------------------------------- | ------------------------------------------ |
-| 1    | Create a **stock exeuntu** VM (keeps Shelley) | exe.dev                                    |
+| 1    | Create a VM from the **IV base image** (keeps Shelley) | `exeslim` repo + exe.dev           |
 | 2    | Join the tailnet                              | `join-tailnet` skill                       |
 | 3    | Install the **team software layer**           | `provision-iv.sh` (this repo, public)      |
 | 4    | Clone the work repo + serve its doc site      | repo integration + `provision-docsite`     |
 | 5    | _(optional)_ Personal overlay                 | your dotfiles `install.sh` (separate repo) |
 
-Stock exeuntu is deliberate — but **not** because a custom image must lose
-Shelley. It loses Shelley only by default; `LABEL exe.dev/install-shelley=true`
-opts back in (`ssh exe.dev doc customization`). The durable reason is that
-exe.dev fixes the image at creation with no way to move a live VM onto a newer
-one, so baking the version-pinned tools would turn every bump into a fleet
+The base image is a **custom** image, and that is deliberate. Earlier revisions
+of these docs said IV had to use stock `exeuntu` because a custom image loses
+Shelley; it loses Shelley only by default, and
+`LABEL exe.dev/install-shelley=true` opts back in
+(`ssh exe.dev doc customization`). The IV bases set that label and supply their
+own `shelley.socket`/`shelley.service`.
+
+What stays true is the split of responsibilities: the **image** carries the OS
+layer, and **`provision-iv.sh`** carries the volatile, version-pinned tools.
+exe.dev fixes a VM's image at creation with no way to move a live VM onto a
+newer one, so baking the pinned tools would turn every bump into a fleet
 recreate. See "Why a script, not a custom image" in `README.md`.
 
-## 1. Create the VM (stock exeuntu)
+Two bases, one per lane
+([`kylelundstedt/exeslim`](https://github.com/kylelundstedt/exeslim)):
+
+| Base | For | Carries |
+| ---- | --- | ------- |
+| `ghcr.io/kylelundstedt/exeslim-dev` | agent/dev VMs | exeslim + `git jq unzip nginx-light openssh-client libyaml-0-2` + Shelley units |
+| `ghcr.io/kylelundstedt/exeslim` | deployment targets | systemd, TLS roots, curl — no toolchain, no Shelley |
+
+Stock `boldsoftware/exeuntu` remains available (omit `--image`) for a
+batteries-included box that is not part of the IV fleet.
+
+## 1. Create the VM (IV dev base)
 
 ```bash
-ssh exe.dev new --name=<vm> --tag=iv          # no --image ⇒ stock exeuntu
+# Pin the immutable <date>.<run>.<attempt> build ID; never :latest, because
+# exe.dev caches mutable tags and can serve the previous image.
+ssh exe.dev new --name=<vm> --tag=iv \
+  --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 ```
+
+`--tag=iv` is what attaches the `tailscale-api` integration that step 2 needs.
 
 ## 2. Join the tailnet (on demand)
 
@@ -37,9 +59,9 @@ See `tailnet.md`.
 Pin by checking out a tag/sha of this repo before running the script.
 
 ```bash
-ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
-  && git -C ~/iv-image checkout <tag-or-sha> \
-  && ~/iv-image/provision-iv.sh"
+ssh <vm>.exe.xyz "git clone https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
+  && git -C ~/iv-provision checkout <tag-or-sha> \
+  && ~/iv-provision/provision-iv.sh"
 ```
 
 `provision-iv.sh` installs DuckDB, Apex (the Markdown and documentation-site

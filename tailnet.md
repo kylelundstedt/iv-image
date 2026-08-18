@@ -4,10 +4,17 @@ title: "Tailnet Join"
 
 ## Contract
 
-A stock exeuntu VM starts off the tailnet and `tailscaled` may be disabled. There
-is no baked bootstrap script and no automatic join. A VM stays off the tailnet
-until the `join-tailnet` workflow explicitly enables the daemon and runs
-`tailscale up`.
+A newly created VM starts off the tailnet. There is no baked bootstrap script
+and no automatic join. A VM stays off the tailnet until the `join-tailnet`
+workflow explicitly enables the daemon and runs `tailscale up`.
+
+> **Known gap (2026-08-18).** On the `exeslim-dev` base, `tailscale` is not
+> installed *at all* — neither this repo nor the image provides it; it has been
+> arriving via the personal dotfiles `install.sh`. So `join-tailnet` cannot
+> succeed on a freshly provisioned VM until the tailscale install moves into
+> `provision-iv.sh` (pinned + checksummed, with `--ssh`). Tracked in `TODO.md`.
+> Text below that says `tailscaled` "ships disabled" describes the exeuntu base,
+> not the current one.
 
 This is deliberate. Auto-join-on-boot put every VM on the tailnet whether or not
 it belonged there, and the logic to do it had to live somewhere — a per-account
@@ -78,8 +85,8 @@ broker in front instead of attaching the raw proxy.
 
 ## Upgrading a VM to a new revision
 
-The normal upgrade is an in-place re-provision: check out a newer `iv-image`
-tag/sha in `~/iv-image` and run `provision-iv.sh` again. This updates the team
+The normal upgrade is an in-place re-provision: check out a newer `iv-provision`
+tag/sha in `~/iv-provision` and run `provision-iv.sh` again. This updates the team
 software/configuration layer and rewrites `~/iv-provision.lock` without wiping
 the VM or changing its tailnet identity. The `upgrade-vm` skill documents this
 as Path A.
@@ -87,7 +94,7 @@ as Path A.
 A full destroy/recreate is only needed for a fresh disk or an exe.dev-managed
 base change that re-provisioning cannot address. In that exceptional path,
 destroy the VM, delete the stale tailnet node from a trusted workstation,
-recreate stock exeuntu, rejoin, and re-provision. It **wipes the VM's local
+recreate from the pinned base image, rejoin, and re-provision. It **wipes the VM's local
 disk**.
 
 ## Security boundary

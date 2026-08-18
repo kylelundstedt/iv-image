@@ -6,7 +6,7 @@ title: "Registry"
 > deleted too). Nothing pulled from its legacy `registry:2` container under the
 > script-based approach, and the hosted doc site it served was dropped — the
 > docs are readable in-repo, and any IV VM can serve them again with
-> `provision-docsite ~/iv-image` (disaster-recovery steps below double as the
+> `provision-docsite ~/iv-provision` (disaster-recovery steps below double as the
 > recreate recipe). This doc is retained for historical reference.
 
 ## What `iv-registry` is now
@@ -29,9 +29,9 @@ If `iv-registry` is destroyed, recreate it like any other IV VM (see
 
 ```bash
 ssh exe.dev new --name=iv-registry --tag=iv
-ssh iv-registry.exe.xyz "git clone https://github.com/kylelundstedt/iv-image.git ~/iv-image \
-  && ~/iv-image/provision-iv.sh \
-  && provision-docsite ~/iv-image"
+ssh iv-registry.exe.xyz "git clone https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
+  && ~/iv-provision/provision-iv.sh \
+  && provision-docsite ~/iv-provision"
 ```
 
 `provision-iv.sh` installs Apex; `provision-docsite` renders the site and serves
