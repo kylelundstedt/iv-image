@@ -534,6 +534,13 @@ install_uv() {
   [[ $(uv_version) == "$UV_VERSION" ]]
 }
 
+# Claude Code manages its own layout: the real binary lives at
+# ~/.local/share/claude/versions/<version> with ~/.local/bin/claude a symlink to
+# it, and its self-update adds versions there and repoints the link. Installing a
+# plain file over the symlink would work but is wrong twice over: it strands the
+# 263 MB versioned copy as orphaned bytes (exactly the shadowed-duplicate waste
+# that keeps agents out of the base image) and leaves self-update managing a
+# directory nothing points at. So mirror the native layout instead.
 install_claude_code() {
   local actual
   actual=$(claude_code_version)
@@ -542,9 +549,12 @@ install_claude_code() {
   download_verified \
     "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/claude-linux-${CLAUDE_CODE_ASSET_ARCH}.tar.gz" \
     "$CLAUDE_CODE_SHA256" "$TMP/claude.tar.gz"
-  mkdir -p "$TMP/claude" "$HOME/.local/bin"
+  mkdir -p "$TMP/claude" "$HOME/.local/bin" "$HOME/.local/share/claude/versions"
   tar -xzf "$TMP/claude.tar.gz" -C "$TMP/claude"
-  install -m 0755 "$TMP/claude/claude" "$HOME/.local/bin/claude"
+  install -m 0755 "$TMP/claude/claude" \
+    "$HOME/.local/share/claude/versions/$CLAUDE_CODE_VERSION"
+  ln -sfn "$HOME/.local/share/claude/versions/$CLAUDE_CODE_VERSION" \
+    "$HOME/.local/bin/claude"
   [[ $(claude_code_version) == "$CLAUDE_CODE_VERSION" ]]
 }
 
