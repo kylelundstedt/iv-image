@@ -28,7 +28,8 @@ ENTIRE_PLUGIN_VERSION=0.1.3
 # 2.0 GB of superseded duplicates measured fleet-wide 2026-07-28.
 #
 # Installed from each project's signed/checksummed release assets rather than the
-# `curl | bash` installers dotfiles used, so the version is pinned and verified.
+# unverified pipe-to-shell installers dotfiles used, so versions are pinned and
+# checksum-verified.
 #
 # Both agents self-update. Like Shelley, a pinned install can therefore drift;
 # unlike Shelley there is no IV requirement for a specific build, so drift is
@@ -367,8 +368,8 @@ install_apex() {
 # would be a fleet recreate; here it is a re-provision.
 #
 # Installed from Tailscale's own signed apt repository rather than
-# `curl -fsSL https://tailscale.com/install.sh | sh` (what the personal dotfiles
-# used, and the reason a fleet VM could not join the tailnet without them). The
+# the vendor's pipe-to-shell install script (what the personal dotfiles used, and
+# the reason a fleet VM could not join the tailnet without them). The
 # repo gives dpkg-managed upgrades, a signed index, and `iv-apt-upgrade.timer`
 # picks up security updates for free -- none of which piping a script provides.
 # No version pin: an out-of-date tailscaled loses tailnet connectivity, which is

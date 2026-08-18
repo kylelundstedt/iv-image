@@ -22,7 +22,46 @@ required=(
   AGENTSVIEW_SHA256_AMD64 AGENTSVIEW_SHA256_ARM64
   SHELLEY_SHA256_AMD64 SHELLEY_SHA256_ARM64
   APEX_SHA256_AMD64 APEX_SHA256_ARM64
+  ENTIRE_VERSION ENTIRE_PLUGIN_VERSION
+  ENTIRE_SHA256_AMD64 ENTIRE_SHA256_ARM64
+  CLAUDE_CODE_VERSION CODEX_VERSION UV_VERSION
+  CLAUDE_CODE_SHA256_AMD64 CLAUDE_CODE_SHA256_ARM64
+  CODEX_SHA256_AMD64 CODEX_SHA256_ARM64
+  UV_SHA256_AMD64 UV_SHA256_ARM64
 )
+
+# Not in the loop above: these are single-value pins with no _AMD64/_ARM64 pair,
+# so they need the 64-hex check applied by name rather than by suffix.
+# entire-agent-shelley is a shell/Python polyglot and the AgentsView adapter is
+# Python, so both are arch-independent.
+for name in ENTIRE_PLUGIN_SHA256 ENTIRE_AGENTSVIEW_SHA256; do
+  value=$(sed -nE "s/^${name}=//p" "$script")
+  [[ $value =~ ^[0-9a-f]{64}$ ]] || {
+    echo "invalid SHA-256 pin: $name=$value" >&2
+    exit 1
+  }
+done
+
+# The vendored adapter must match the pin the provisioner verifies, or every
+# provision fails at the checksum instead of at review time.
+vendored="$repo/vendor/entire-agent-agentsview/entire-agent-agentsview"
+if [[ -f $vendored ]]; then
+  want=$(sed -nE 's/^ENTIRE_AGENTSVIEW_SHA256=//p' "$script")
+  got=$(sha256sum "$vendored" | awk '{print $1}')
+  [[ $want == "$got" ]] || {
+    echo "vendored entire-agent-agentsview does not match its pin" >&2
+    echo "  pin:  $want" >&2
+    echo "  file: $got" >&2
+    exit 1
+  }
+fi
+
+# Entire's CLI pin must stay at the version entire-agent-shelley was qualified
+# against. Bumping one without the other is the failure this guards.
+grep -q 'qualified only against 0.8.42' "$script" || {
+  echo "provisioner no longer records why the Entire CLI pin is held back" >&2
+  exit 1
+}
 
 for name in "${required[@]}"; do
   value=$(sed -nE "s/^${name}=//p" "$script")
