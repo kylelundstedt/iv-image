@@ -117,8 +117,10 @@ not the provisioning repository release tag.
 
 Recreate is also the **only** way to pick up a newer base image — exe.dev fixes
 a VM's image at creation. Take the current immutable build ID from the
-[package page](https://github.com/kylelundstedt/exeslim/pkgs/container/exeslim-dev);
-never `:latest`.
+[package page](https://github.com/kylelundstedt/exeslim/pkgs/container/exeslim-dev).
+Use the build ID rather than a mutable tag here specifically: the whole point of
+this path is to land on a *known* base, and exe.dev caches mutable tags for up to
+24 h (`:<date>` and `:<sha>` included — only `latest`/`main`/`master` are 1 h).
 
 ```bash
 ssh -o ConnectTimeout=30 exe.dev new --name=<vm> --tag=iv \

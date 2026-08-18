@@ -26,7 +26,7 @@ VMs are created from the IV base image, then provisioned by running
 
 ```bash
 # 1. Create a VM from the IV dev base (exeslim-dev: slim, keeps Shelley).
-#    Pin the immutable build ID from the package page; never :latest.
+#    Use the immutable build ID for a fleet VM (see "Picking a tag" below).
 #    https://github.com/kylelundstedt/exeslim/pkgs/container/exeslim-dev
 ssh exe.dev new --name=<vm> --tag=iv \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>

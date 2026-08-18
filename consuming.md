@@ -9,7 +9,7 @@ VMs are created from the IV dev base image, then provisioned by running
 
 ```bash
 # 1. Create a VM from the IV dev base. Pin the immutable build ID, never
-#    :latest — exe.dev caches mutable tags.
+#    the immutable build ID rather than a mutable tag.
 ssh exe.dev new --name=<vm> --tag=iv \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 

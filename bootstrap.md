@@ -40,8 +40,7 @@ batteries-included box that is not part of the IV fleet.
 ## 1. Create the VM (IV dev base)
 
 ```bash
-# Pin the immutable <date>.<run>.<attempt> build ID; never :latest, because
-# exe.dev caches mutable tags and can serve the previous image.
+# Use the immutable <date>.<run>.<attempt> build ID, from the package page.
 ssh exe.dev new --name=<vm> --tag=iv \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 ```

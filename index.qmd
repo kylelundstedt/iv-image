@@ -75,9 +75,14 @@ on the VM, run `provision-iv.sh`, and you get the same result.
   `provision-iv.sh` records what it landed on in `~/iv-provision.lock` (base
   image revision, Shelley version, installed DuckDB/Apex/AWS/Tigris/rclone/herdr
   versions, skills count, manifest pin, and provisioning Git SHA).
-- Pin the immutable `<date>.<run>.<attempt>` build ID, never `:latest` —
-  exe.dev caches mutable tags, so a VM created shortly after a push can be
-  served the previous image.
+- Prefer the immutable `<date>.<run>.<attempt>` build ID for a fleet VM. The tag
+  is read once, at `new`, and never re-pulled, so it is not a pin that keeps
+  applying — it only decides which build the VM starts from. What makes the
+  immutable ID worth using anyway is that exe.dev caches mutable tags: 1 hour for
+  `latest`/`main`/`master` and **24 hours for everything else**, so the tags that
+  look most specific (`:<date>`, `:<sha>`) are cached longest and a mutable
+  `:<date>` can serve yesterday's image for a full day. See "Picking a tag" in
+  the [`exeslim` README](https://github.com/kylelundstedt/exeslim).
 
 ## Versioning
 
