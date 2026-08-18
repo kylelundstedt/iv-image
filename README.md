@@ -72,16 +72,28 @@ the tailnet or creates a fleet-wide token as a side effect.
 
 ## Relationship to the dotfiles repo
 
-The team layer's _contents_ — the skill set, MCP server list, and the shared
-`AGENTS.md` sections — are declared in
-[kylelundstedt/dotfiles](https://github.com/kylelundstedt/dotfiles)'
-`provisioning/` manifests and vendored into this repo by `vendor-skills.sh` at
-the dotfiles commit recorded in `dotfiles-manifest.pin`. **Edit shared material
-in dotfiles, then re-vendor and bump the pin here** — dotfiles'
-`diff-provisioning.sh` flags any drift between the two repos. The division of
-labor: this repo provisions the _team_ baseline onto a VM; dotfiles'
-`install.sh` then (optionally) layers _personal_ config on top as a thin
-overlay that never touches the team layer.
+**This repo no longer depends on the dotfiles repo** (changed 2026-08-18). The
+team layer's contents — the skill set, MCP server list, and the shared
+`AGENTS.md` sections — are declared in `provisioning/`
+(`skills.manifest`, `mcp.manifest`, `agents-shared.md`) and vendored into
+`skills/` + `agent/` by `vendor-skills.sh`. Edit the manifests here, re-vendor,
+and commit the result.
+
+Those manifests previously lived in
+[kylelundstedt/dotfiles](https://github.com/kylelundstedt/dotfiles) and were
+fetched at the commit recorded in `dotfiles-manifest.pin`, with dotfiles'
+`diff-provisioning.sh` policing drift. That arrangement made a fleet VM's
+provisioning depend on a personal repository — and the pin was silently wrong
+when it was removed: `agent/mcp-servers.json` was committed with
+`api-motherduck-mcp` (matching the real exe.dev integration) while the pinned
+manifest still read `motherduck-mcp`, so the content had been re-vendored from a
+newer dotfiles commit without bumping the pin. A pin that can disagree with the
+artifact it pins buys nothing.
+
+The division of labor is unchanged: this repo provisions the _team_ baseline onto
+a VM; dotfiles' `install.sh` then (optionally) layers _personal_ config on top as
+a thin overlay that never touches the team layer. Personal rows in
+`skills.manifest` are ignored by provisioning and exist for that overlay.
 
 ## Authoring boundary
 
@@ -170,7 +182,7 @@ and this script continuing to carry the volatile, version-pinned tools. See
 | `skills/`               | Vendored, pinned team skills — committed to the repo so they are frozen.                                                                                   |
 | `bin/`                  | `render-site` + `provision-docsite` + `gen-llms-txt` + `install-cloud-cli` (on-demand aws/azure/gcloud) — installed onto PATH.                                 |
 | `agent/`                | Team agent config: `AGENTS.md`, Claude Code `settings.json`, Codex `config.toml`, MCP setup.                                                               |
-| `dotfiles-manifest.pin` | The dotfiles commit whose `provisioning/` manifests the vendored content comes from (see "Relationship to the dotfiles repo").                             |
+| `provisioning/`         | Declarative source for the team layer: `skills.manifest`, `mcp.manifest`, `agents-shared.md`. `vendor-skills.sh` reads these; nothing is fetched from another repository. |
 | `tests/`                | Validation suite: `smoke-provision.sh` (run on a VM after provisioning), `test-provision.sh`, `test-ssh-guard.sh`, Python unit tests — run by CI.          |
 | `.claude/skills/`       | Project-level skills for agents working in this repo (`join-tailnet`, `upgrade-vm`) — not vendored onto VMs.                                               |
 | `*.qmd` / `*.md`        | Markdown documentation sources, readable in-repo and served by `provision-docsite` on any IV VM.                                                               |

@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 # Refresh the vendored ./skills snapshot AND the generated agent/mcp-servers.json
-# from the dotfiles provisioning manifests (kylelundstedt/dotfiles
-# provisioning/{skills,mcp}.manifest) at the commit pinned in
-# ./dotfiles-manifest.pin. dotfiles owns the list; this repo pins WHICH revision
-# of the list it baked, so the team image stays reproducible from a git commit.
+# from ./provisioning/{skills,mcp}.manifest.
 #
-# Run occasionally on any machine with node + jq; commit the result to re-pin.
+# Those manifests used to be fetched from kylelundstedt/dotfiles at the commit
+# recorded in ./dotfiles-manifest.pin. They now live here (2026-08-18), so a
+# fleet VM provisions with no dependency on a personal repository.
+#
+# The pin is not missed. It was silently wrong: agent/mcp-servers.json was
+# committed with `api-motherduck-mcp` (which matches the real exe.dev
+# integration) while the pinned manifest still said `motherduck-mcp`, i.e. the
+# content had been re-vendored from a newer dotfiles commit without bumping the
+# pin. A pin that can disagree with the artifact it supposedly pins buys nothing;
+# the manifests being in-tree and reviewed with the snapshot is stronger.
+#
+# Run occasionally on any machine with node + jq; commit the result.
 # provision-iv.sh installs from the committed snapshot with NO network — this
 # is the ONLY step that touches upstream/node.
-#
-# Bump the pin: DOTFILES_SHA=<sha> ./vendor-skills.sh   (rewrites the pin file)
 #
 # Installs into a throwaway HOME so your real ~/.agents/skills is left untouched.
 set -euo pipefail
@@ -18,16 +24,13 @@ cd "$(dirname "$0")"
 command -v npx >/dev/null || { echo "vendor-skills: need node/npx on PATH" >&2; exit 1; }
 command -v jq  >/dev/null || { echo "vendor-skills: need jq on PATH" >&2; exit 1; }
 
-PIN_FILE="dotfiles-manifest.pin"
-if [ -n "${DOTFILES_SHA:-}" ]; then
-  printf '%s\n' "$DOTFILES_SHA" > "$PIN_FILE"
-fi
-PIN="$(tr -d '[:space:]' < "$PIN_FILE")"
-[ -n "$PIN" ] || { echo "vendor-skills: empty $PIN_FILE" >&2; exit 1; }
-RAW="https://raw.githubusercontent.com/kylelundstedt/dotfiles/$PIN/provisioning"
+MANIFEST_DIR="provisioning"
+for f in skills.manifest mcp.manifest agents-shared.md; do
+  [ -f "$MANIFEST_DIR/$f" ] || { echo "vendor-skills: missing $MANIFEST_DIR/$f" >&2; exit 1; }
+done
 
-SKILLS_MANIFEST="$(curl -fsSL "$RAW/skills.manifest")"
-MCP_MANIFEST="$(curl -fsSL "$RAW/mcp.manifest")"
+SKILLS_MANIFEST="$(cat "$MANIFEST_DIR/skills.manifest")"
+MCP_MANIFEST="$(cat "$MANIFEST_DIR/mcp.manifest")"
 manifest_rows() { grep -vE '^[[:space:]]*#|^[[:space:]]*$' <<< "$1"; }
 
 OUT="$(pwd)/skills"
@@ -76,15 +79,15 @@ manifest_rows "$MCP_MANIFEST" \
   | jq -Rn 'reduce (inputs | split("\t")) as $r ({}; . + {($r[0]): {type: "http", url: $r[1]}})' \
   > "$SERVERS_OUT"
 
-# --- agents: splice the shared AGENTS.md block (dotfiles agents-shared.md) ---
+# --- agents: splice the shared AGENTS.md block (provisioning/agents-shared.md) ---
 # The block between the shared markers in agent/AGENTS.md is replaced with the
 # pinned file verbatim; team-specific sections outside the markers are kept.
 # ENVIRON (not awk -v) so backslashes in the content can't be mangled.
-AGENTS_SHARED="$(curl -fsSL "$RAW/agents-shared.md")" \
+AGENTS_SHARED="$(cat "$MANIFEST_DIR/agents-shared.md")" \
 awk '
   /^<!-- >>> shared/ {print; print ENVIRON["AGENTS_SHARED"]; skip=1; next}
   /^<!-- <<< shared/ {skip=0}
   !skip
 ' agent/AGENTS.md > agent/AGENTS.md.tmp && mv agent/AGENTS.md.tmp agent/AGENTS.md
 
-echo "vendored $(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills + $(jq 'length' "$SERVERS_OUT") MCP servers + shared AGENTS block from dotfiles@${PIN:0:12} — commit to pin"
+echo "vendored $(find "$OUT" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills + $(jq 'length' "$SERVERS_OUT") MCP servers + shared AGENTS block from $MANIFEST_DIR — commit the result"

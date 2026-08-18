@@ -602,7 +602,6 @@ LOCK="$HOME/iv-provision.lock"
   echo "agentsview_version=$(agentsview_version)"
   echo "apex_version=$(apex_version)"
   echo "tailscale_version=$(tailscale_version)"
-  echo "dotfiles_manifest_pin=$(tr -d '[:space:]' < "$IV_REPO/dotfiles-manifest.pin" 2>/dev/null || echo unknown)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"
 

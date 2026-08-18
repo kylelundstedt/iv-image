@@ -8,12 +8,12 @@ research (custom-image / arm64 era) → `registry.md`.
 The team layer must stand alone: a fleet VM should provision fully without
 `kylelundstedt/dotfiles`. Ordered by severity.
 
-- [ ] **Move the provisioning manifests in.** `vendor-skills.sh` fetches
-      `skills.manifest`, `mcp.manifest`, and `agents-shared.md` from
-      `raw.githubusercontent.com/kylelundstedt/dotfiles` at
-      `dotfiles-manifest.pin`. Bring those three files here, drop the pin file
-      and its lock-file field, and retire dotfiles' `diff-provisioning.sh` drift
-      check. No runtime change: `skills/` is already vendored and frozen.
+Done so far: `tailscale` is installed here (2026-08-18), and the `provisioning/`
+manifests moved in-tree, retiring `dotfiles-manifest.pin`. `provision-iv.sh` now
+has no functional dotfiles dependency. Also retire dotfiles'
+`diff-provisioning.sh`, which policed a pin that no longer exists — that edit
+belongs in the dotfiles repo, whose integration on this VM is read-only.
+
 - [ ] **Install `claude`, `codex`, uv, and node here.** Currently dotfiles.
       Pinned in the script, *not* baked into the image — baking those measured
       2.0 GB of stale shadowed duplicates fleet-wide (2026-07-28).
