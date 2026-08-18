@@ -36,10 +36,12 @@ fi
 # Apex 1.1.16 fixes silent 1024-character truncation in unified mode
 # (ApexMarkdown/apex#31). Keep a fleet smoke check so a future bump cannot
 # reintroduce content loss while still exiting successfully.
-long_line=$(python3 - <<'PY'
-print("a" * 4096 + "END-OF-LONG-LINE")
-PY
-)
+# Built with awk, not python3. This line aborted the whole smoke suite on the
+# freshly provisioned iv-provision VM (2026-08-18) because the minimal base has no
+# system interpreter -- and a smoke test that dies on its own fixture generator
+# reports nothing about the 20-odd checks after it. provision-iv.sh now installs a
+# uv-managed python3, but the fixture does not need one.
+long_line=$(awk 'BEGIN { s = sprintf("%4096s", ""); gsub(/ /, "a", s); print s "END-OF-LONG-LINE" }')
 rendered_long_line=$(printf '%s\n' "$long_line" | /usr/local/bin/apex -m unified)
 grep -q 'END-OF-LONG-LINE' <<<"$rendered_long_line"
 

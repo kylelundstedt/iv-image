@@ -569,6 +569,32 @@ install_uv() {
   [[ $(uv_version) == "$UV_VERSION" ]]
 }
 
+# A python3 interpreter, via uv. The minimal base has none, and several things
+# that matter degrade SILENTLY without one rather than failing loudly:
+#
+#   - entire-agent-shelley execs ENTIRE_SHELLEY_PYTHON, then ~/.local/bin/python3,
+#     then python3 on PATH. With none of them, the ACR capture path is dead while
+#     Shelley's hooks still exit 0, so provenance simply stops being recorded.
+#   - install_shelley() uses SQLite's backup API through python3 for a consistent
+#     database copy, falling back to a plain file copy.
+#   - tests/smoke-provision.sh line 42 generates its long-line Apex regression
+#     fixture with python3 and dies without it (observed on the iv-provision VM,
+#     2026-08-18: the whole smoke suite aborted at that line).
+#
+# This was previously supplied by the personal dotfiles overlay, which is exactly
+# the kind of hidden dependency the 3.0.x decoupling exists to remove.
+#
+# Cheap: uv already downloads a managed CPython for its own tools, so --default
+# mostly adds the python/python3 shims to ~/.local/bin.
+install_python() {
+  local actual
+  actual=$("$HOME/.local/bin/python3" --version 2>/dev/null | awk '{print $2}' || true)
+  echo "== python3 (uv-managed; installed: ${actual:-missing}) =="
+  [[ -n $actual ]] && return
+  "$HOME/.local/bin/uv" python install --default
+  [[ -x $HOME/.local/bin/python3 ]]
+}
+
 # Claude Code manages its own layout: the real binary lives at
 # ~/.local/share/claude/versions/<version> with ~/.local/bin/claude a symlink to
 # it, and its self-update adds versions there and repoints the link. Installing a
@@ -611,6 +637,7 @@ install_codex() {
 remove_legacy_quarto
 install_tailscale
 install_uv
+install_python
 install_claude_code
 install_codex
 install_entire
@@ -906,6 +933,7 @@ LOCK="$HOME/iv-provision.lock"
   echo "entire_version=$(entire_version)"
   echo "entire_plugin_version=$(entire_plugin_version)"
   echo "uv_version=$(uv_version)"
+  echo "python3_version=$("$HOME/.local/bin/python3" --version 2>/dev/null | awk '{print $2}')"
   echo "claude_code_version=$(claude_code_version)"
   echo "codex_version=$(codex_version)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
