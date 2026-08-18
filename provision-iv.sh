@@ -15,6 +15,13 @@ SHELLEY_VERSION=0.959.914757635
 SHELLEY_TAG=v0.959.914757635
 SHELLEY_COMMIT=33df9d893b0de54d32942c7541841cb0e626baa2
 APEX_VERSION=1.1.16
+# Entire (ACR provider, ADR 0010) and IV's Shelley external-agent plugin.
+# Pinned to 0.8.42 deliberately, NOT latest: entire-agent-shelley 0.1.3 is
+# qualified only against 0.8.42 (see its QUALIFICATION-v0.1.3.md), and 0.10.1 is
+# already published. Bumping the CLI without re-qualifying the plugin risks the
+# capture path in the Phase 1 repositories. Re-qualify, then bump both together.
+ENTIRE_VERSION=0.8.42
+ENTIRE_PLUGIN_VERSION=0.1.3
 
 DUCKDB_SHA256_AMD64=35caef1fecbc8d7e2c07de4fd2cdefc5189ec9ba9e1cca228fb1a1c48cc52a8a
 DUCKDB_SHA256_ARM64=5e2399428793642e994f1584c47d49f4c58b7b4ec2297ea4a522353a6c553835
@@ -32,6 +39,12 @@ SHELLEY_SHA256_AMD64=6f1aff50a7890d397c3da32aa4d6fddf06ed6aa8aebaa987adbb527bb3d
 SHELLEY_SHA256_ARM64=e89091075ae2732b6e073bdb75896be9ce8ef524d23b8c916b036c4c73dd53d3
 APEX_SHA256_AMD64=d19c99148cf1d3cd3302c1ff13b893c09f5b3575b00c67f183b0b9ddb7000ac1
 APEX_SHA256_ARM64=dbf306f515301b6c2b91988d142da2e95b89c3efbcc359c03975fb12a811a2d9
+# From the release's own checksums.txt.
+ENTIRE_SHA256_AMD64=82b1d3749a369b1f113b298f61725796e535514d4927f30d5e90914b9631d5a6
+ENTIRE_SHA256_ARM64=b6eec74701b12536147023bb352460ad2739dfc7882a714822a6c363dddfa9dc
+# Arch-independent: the plugin is a shell/Python polyglot, not a compiled binary.
+# Matches SHA256SUMS at tag v0.1.3 and the hash recorded in its README.
+ENTIRE_PLUGIN_SHA256=1541c304ce86e7b80b74d91a01348daa6a38dd53e068c856c3d832880a55f64e
 
 if [[ $EUID -eq 0 ]]; then
   echo "provision-iv: run as the VM login user, not with sudo" >&2
@@ -54,6 +67,7 @@ case "$DPKG_ARCH" in
     SHELLEY_SHA256=$SHELLEY_SHA256_AMD64
     APEX_SHA256=$APEX_SHA256_AMD64
     APEX_ASSET_ARCH=x86_64
+    ENTIRE_SHA256=$ENTIRE_SHA256_AMD64
     ;;
   arm64)
     DUCKDB_SHA256=$DUCKDB_SHA256_ARM64
@@ -64,6 +78,7 @@ case "$DPKG_ARCH" in
     SHELLEY_SHA256=$SHELLEY_SHA256_ARM64
     APEX_SHA256=$APEX_SHA256_ARM64
     APEX_ASSET_ARCH=aarch64
+    ENTIRE_SHA256=$ENTIRE_SHA256_ARM64
     ;;
   *) echo "provision-iv: unsupported dpkg architecture: $DPKG_ARCH" >&2; exit 1 ;;
 esac
@@ -106,6 +121,18 @@ shelley_version() { shelley_info | jq -r '.version // empty' 2>/dev/null || true
 shelley_commit() { shelley_info | jq -r '.commit // empty' 2>/dev/null || true; }
 apex_version() { /usr/local/bin/apex --version 2>/dev/null | awk 'NR == 1 {print $2}' || true; }
 tailscale_version() { tailscale version 2>/dev/null | head -1 || true; }
+entire_version() { "$HOME/.local/bin/entire" --version 2>/dev/null | sed -nE '1s/^Entire CLI //p' || true; }
+entire_plugin_version() {
+  local p="$HOME/.config/entire/shelley-hooks/bin/entire-agent-shelley"
+  [[ -x $p ]] || return 0
+  local got
+  got=$(sha256sum "$p" 2>/dev/null | awk '{print $1}')
+  if [[ $got == "$ENTIRE_PLUGIN_SHA256" ]]; then
+    printf '%s' "$ENTIRE_PLUGIN_VERSION"
+  else
+    printf 'unknown(%s)' "${got:0:12}"
+  fi
+}
 
 install_duckdb() {
   local actual
@@ -349,8 +376,80 @@ install_tailscale() {
   fi
 }
 
+# Entire CLI: the ACR provider adopted by ADR 0010. Absent from this script until
+# 2026-08-18, which meant the *primary* authoring-context capture path was
+# hand-installed and silently did not survive a VM recreate -- the one gap here
+# that loses provenance rather than convenience.
+#
+# Installed under ~/.local/bin (not /usr/local/bin) to match where the vendor's
+# own installer puts it, so a user-run `entire update` does not end up shadowed
+# by a root-owned copy earlier on PATH.
+#
+# No credential is involved: capture works unauthenticated with the git-branch
+# checkpoint backend (`entire auth status` reports "Not logged in" on VMs that are
+# actively capturing). Telemetry stays off, per ADR 0010.
+install_entire() {
+  local actual
+  actual=$(entire_version)
+  echo "== Entire CLI $ENTIRE_VERSION ($DPKG_ARCH; installed: ${actual:-missing}) =="
+  if [[ $actual != "$ENTIRE_VERSION" ]]; then
+    download_verified \
+      "https://github.com/entireio/cli/releases/download/v${ENTIRE_VERSION}/entire_linux_${DPKG_ARCH}.tar.gz" \
+      "$ENTIRE_SHA256" "$TMP/entire.tar.gz"
+    mkdir -p "$TMP/entire" "$HOME/.local/bin"
+    tar -xzf "$TMP/entire.tar.gz" -C "$TMP/entire"
+    # git-remote-entire ships in the same tarball and must land beside the CLI:
+    # git resolves remote helpers by PATH lookup of git-remote-<transport>, so a
+    # missing helper only fails later, at push time, on an entire:// remote.
+    install -m 0755 "$TMP/entire/entire" "$HOME/.local/bin/entire"
+    [[ ! -f $TMP/entire/git-remote-entire ]] \
+      || install -m 0755 "$TMP/entire/git-remote-entire" "$HOME/.local/bin/git-remote-entire"
+    [[ $(entire_version) == "$ENTIRE_VERSION" ]]
+  fi
+}
+
+# entire-agent-shelley: IV's Entire external-agent plugin for Shelley. Public and
+# MIT as of 2026-08-18, so this needs no integration, credential, or proxy host --
+# the same property that lets this script clone itself from GitHub.
+#
+# Deliberately does NOT run `entire enable`. That writes .entire/settings.json and
+# git hooks into a repository, which is a per-repo governance decision (which
+# repositories are approved for capture), not a machine baseline. Provisioning
+# installs the mechanism; enrolling a repository stays explicit.
+install_entire_plugin() {
+  local dest_dir="$HOME/.config/entire/shelley-hooks/bin"
+  local dest="$dest_dir/entire-agent-shelley"
+  local actual=""
+  [[ ! -x $dest ]] || actual=$(sha256sum "$dest" | awk '{print $1}')
+  echo "== Entire Shelley plugin $ENTIRE_PLUGIN_VERSION (installed: ${actual:0:12}${actual:+...}) =="
+  [[ $actual == "$ENTIRE_PLUGIN_SHA256" ]] && return
+
+  local src="$TMP/eas"
+  git clone -q --depth 1 --branch "v${ENTIRE_PLUGIN_VERSION}" \
+    https://github.com/kylelundstedt/entire-agent-shelley.git "$src"
+  printf '%s  %s\n' "$ENTIRE_PLUGIN_SHA256" "$src/entire-agent-shelley" | sha256sum -c -
+
+  # The upstream install.sh refuses to overwrite an executable it does not own
+  # (it keeps a SHA receipt) and needs python3 for that check. Call it when it is
+  # usable, so its safety behaviour is preserved rather than reimplemented.
+  if command -v python3 >/dev/null 2>&1; then
+    ( cd "$src" && ./install.sh >/dev/null )
+  else
+    mkdir -p "$HOME/.local/bin"
+    install -m 0755 "$src/entire-agent-shelley" "$HOME/.local/bin/entire-agent-shelley"
+  fi
+
+  # Runtime copy, decoupled from any git checkout: the Shelley hooks exec this
+  # path directly, so it must not depend on a clone that may be moved or deleted.
+  mkdir -p "$dest_dir"
+  install -m 0700 "$src/entire-agent-shelley" "$dest"
+  [[ $(sha256sum "$dest" | awk '{print $1}') == "$ENTIRE_PLUGIN_SHA256" ]]
+}
+
 remove_legacy_quarto
 install_tailscale
+install_entire
+install_entire_plugin
 install_duckdb
 install_tigris
 install_herdr
@@ -602,6 +701,8 @@ LOCK="$HOME/iv-provision.lock"
   echo "agentsview_version=$(agentsview_version)"
   echo "apex_version=$(apex_version)"
   echo "tailscale_version=$(tailscale_version)"
+  echo "entire_version=$(entire_version)"
+  echo "entire_plugin_version=$(entire_plugin_version)"
   echo "skills_count=$(wc -l < "$TEAM_SKILLS" | tr -d ' ')"
 } | tee "$LOCK"
 

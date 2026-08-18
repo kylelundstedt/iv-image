@@ -49,6 +49,34 @@ self-update path; and records the actual installed version, commit, and hash in
 `~/iv-provision.lock`. OAuth credentials and conversation databases are never
 baked into this repository or copied between VMs.
 
+### Entire (ACR) capture
+
+Provisioning installs the **Entire CLI** (pinned `0.8.42`, checksum-verified) and
+IV's **`entire-agent-shelley`** plugin (`0.1.3`), which together implement the
+source-native authoring-context capture path adopted by ADR 0010. Neither needs a
+login: capture works unauthenticated with the `git-branch` checkpoint backend.
+
+Before 2026-08-18 neither was installed by this script, so the *primary* ACR
+capture path was hand-placed and did not survive a VM recreate — unlike a missing
+tool, that gap loses provenance and does so silently.
+
+The CLI pin is **not** "latest" on purpose: `entire-agent-shelley` 0.1.3 is
+qualified only against Entire CLI 0.8.42, and 0.10.1 is already published.
+Re-qualify the plugin before bumping the CLI, and bump both together.
+
+Provisioning stops at the mechanism. It does **not** run `entire enable`, because
+that writes `.entire/settings.json` and git hooks into a repository — a per-repo
+decision about which repositories are approved for capture, not a machine
+baseline. Enroll a repository explicitly:
+
+```bash
+cd ~/<repo>
+entire enable --agent shelley --project --telemetry=false --checkpoint-backend branch
+```
+
+`.entire/` is tracked in git, so enrolling once covers every worktree and future
+clone of that repository.
+
 ### AgentsView source activation
 
 AgentsView `0.38.1` is installed on every IV VM, but its source daemon is

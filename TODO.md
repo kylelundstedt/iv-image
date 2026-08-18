@@ -23,33 +23,29 @@ belongs in the dotfiles repo, whose integration on this VM is read-only.
 
 ## Own the Entire ACR capture path
 
-`provision-iv.sh` does not mention Entire at all, so the **primary** ACR capture
-path in ADR 0010 is hand-installed and does not survive a VM recreate — silently.
-`iv-foundry-stage2` had the CLI and the Shelley plugin only because someone put
-them there by hand.
+Done 2026-08-18: the CLI (pinned 0.8.42, checksummed) and the
+`entire-agent-shelley` plugin (0.1.3) are installed by `provision-iv.sh`, recorded
+in the lock file, and `entire enable` is deliberately left out as a per-repo
+governance action. What remains:
 
-- [ ] **Install the Entire CLI**, pinned + checksummed from
-      `entireio/cli` release assets (`entire_linux_<arch>.tar.gz` +
-      `checksums.txt`). Pin **0.8.42**, not latest: `entire-agent-shelley` 0.1.3
-      is qualified only against 0.8.42, and 0.10.1 is already out. Re-qualify
-      before bumping. No login or token is needed — capture works unauthenticated
-      with the `git-branch` checkpoint backend.
-- [ ] **Install the `entire-agent-shelley` plugin** and its three Shelley hooks
-      (`new-conversation`, `chat-message`, `end-of-turn`), idempotently.
-      Preserve the upstream installer's SHA-receipt behaviour, which refuses to
-      clobber an unrelated executable at the destination. The repo is now public
-      and MIT, so no integration or credential is required.
-- [ ] Record `entire_version` and `entire_plugin_version` in
-      `~/iv-provision.lock`.
-- [ ] **Do not** run `entire enable` from the provisioner. It writes repo config
-      and git hooks, which is a per-repository governance action, not a machine
-      baseline. Keep it an explicit documented step or a skill.
 - [ ] Decide whether `ave-adapters` should be enrolled. Entire is enabled in
       `fannie-sflpd*` and `iv-docs*` but in **none** of the nine `ave-adapters`
       worktrees, so agent-authored commits there carry no ACR — which
       `iv-acr-required-v0` may reject at promotion. Because `.entire/` is tracked
       in git, enrolling is one `entire enable` plus one commit, inherited by all
       worktrees and future clones.
+- [ ] Two further Entire helpers are on `iv-foundry-stage2`'s PATH and are **not**
+      provisioned, both as fragile symlinks into directories that may move:
+      `entire-push-check` -> `~/dotfiles/maint/...` (fail-closed check that no repo
+      in the fleet holds an unpushed checkpoint — a governance control living in a
+      personal repo), and `entire-agent-agentsview` ->
+      `~/worktrees/iv-docs-fannie-memory/spikes/23-harness/...` (the AgentsView
+      external-agent adapter, pointing into a *spike worktree*). Decide which are
+      real fleet controls; those should be vendored and installed like the Shelley
+      plugin, not symlinked out of a checkout.
+- [ ] Re-qualify `entire-agent-shelley` against a current Entire CLI. The pin is
+      0.8.42 because 0.1.3 was qualified only against it; upstream is at 0.10.1.
+      Until then the CLI cannot be bumped without risking the capture path.
 
 ## AgentsView
 
