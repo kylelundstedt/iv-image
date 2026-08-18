@@ -78,6 +78,30 @@ if [[ $EUID -eq 0 ]]; then
 fi
 
 IV_REPO="$(cd "$(dirname "$0")" && pwd)"
+
+# Say which revision is being provisioned, up front. The lock file records this at
+# the END, which is too late to notice you ran the wrong one: on iv-provision
+# 2026-08-18 a `git checkout --detach main` landed on a stale LOCAL main, four
+# commits behind origin, and silently re-provisioned an older recipe -- removing a
+# skill and un-recording python3. Git's own "your branch is behind" notice scrolled
+# past in the fetch output.
+#
+# Warn on the two states that mean "this is probably not the recipe you think":
+# a checkout that is behind its upstream, and uncommitted changes.
+if git -C "$IV_REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  iv_head=$(git -C "$IV_REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)
+  iv_desc=$(git -C "$IV_REPO" describe --tags --exact-match HEAD 2>/dev/null \
+    || git -C "$IV_REPO" describe --tags HEAD 2>/dev/null \
+    || echo 'no tag')
+  echo "== provisioning from $IV_REPO @ $iv_head ($iv_desc) =="
+  if iv_upstream=$(git -C "$IV_REPO" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null); then
+    iv_behind=$(git -C "$IV_REPO" rev-list --count "HEAD..$iv_upstream" 2>/dev/null || echo 0)
+    [[ ${iv_behind:-0} -eq 0 ]] \
+      || echo "  [!] $iv_behind commit(s) behind $iv_upstream -- check out a release tag instead" >&2
+  fi
+  [[ -z $(git -C "$IV_REPO" status --porcelain 2>/dev/null) ]] \
+    || echo "  [!] working tree has uncommitted changes" >&2
+fi
 DPKG_ARCH="$(dpkg --print-architecture)"
 UNAME_ARCH="$(uname -m)"
 TMP="$(mktemp -d)"
