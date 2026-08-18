@@ -94,6 +94,10 @@ tag/sha before running `provision-iv.sh`.
 
 | Version | Change |
 | ------- | ------ |
+| `3.0.0` | **Renamed `iv-image` → `iv-provision`.** The provisioner now owns everything a fleet VM needs, ending the dependency on the personal dotfiles repo: `tailscale` (with `--ssh`; a fresh VM previously could not join the tailnet at all), `uv`, `claude`, `codex`, the Entire CLI + `entire-agent-shelley` plugin + vendored `entire-agent-agentsview` (ADR 0010's primary ACR capture path, which did not survive a recreate), and the `provisioning/` manifests (retiring `dotfiles-manifest.pin`). Fixes AgentsView's CLI, locked out by its own `--require-auth`, and rotates its unbounded debug log. Documents the real base image (`ghcr.io/kylelundstedt/exeslim-dev`) and retracts the "custom images disable Shelley" claim. Skills refreshed. Breaking: new repo name, new clone URL, `exeuntu_image_revision` → `base_image_*` in the lock file. |
+| `2.9.1` | `install_shelley`: stop the socket before the service, closing the race where socket activation restarted the old binary and let it self-upgrade over the pin. |
+| `2.9.0` | Pin the subscription-capable `aifoundry-org/shelley` release and disable Shelley's unmanaged self-update; tests tolerate optional provisioned tools. |
+| `2.8.0` | `tigris` 3.1.0 → 3.6.1 (adds `TIGRIS_FORCE_PATH_STYLE`). |
 | `2.7.0` | + Apex Markdown 1.1.13 baked as the lightweight document/terminal renderer; Quarto remains the site publisher. |
 | `2.6.0` | + `herdr` baked (0.7.4, pinned; SHA-256s computed locally — upstream ships no checksums). |
 | `2.5.1` | upgrade-vm skill: mint Tailscale API access from the OAuth client instead of the revoked static API key (doc-only). |

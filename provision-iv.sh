@@ -288,9 +288,26 @@ install_shelley() {
   [[ ! -f /etc/systemd/system/shelley.service ]] || sudo cp -a /etc/systemd/system/shelley.service "$backup_dir/shelley.service.prior"
   [[ ! -f /etc/systemd/system/shelley.socket ]] || sudo cp -a /etc/systemd/system/shelley.socket "$backup_dir/shelley.socket.prior"
 
-  # Stop only the service; keep the socket active. Use SQLite's backup API when
-  # Python is available, otherwise copy the stopped/checkpointed database.
+  # Stop the SOCKET FIRST, then the service. shelley.service is BindsTo= the
+  # socket, so stopping only the service leaves the socket listening and the next
+  # touch of it socket-activates the binary that is on disk at that instant --
+  # which, mid-install, is the OLD one, predating the SHELLEY_SKIP_VERSION_CHECK
+  # drop-in, so it then auto-upgrades over the pinned install. Observed on
+  # kgl-songs 2026-08-17: provisioning reported 0.959.914757635 installed and one
+  # minute later the VM was serving 0.956.955465414 again, needing a manual
+  # repair. A clean provision log is therefore not proof the pin stuck.
+  #
+  # Wait for the process to actually exit: `systemctl stop` returns when systemd
+  # considers the unit stopped, which can precede the last write to shelley.db.
+  #
+  # Use SQLite's backup API when Python is available, otherwise copy the
+  # stopped/checkpointed database.
+  sudo systemctl stop shelley.socket 2>/dev/null || true
   sudo systemctl stop shelley.service 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    pgrep -x shelley >/dev/null 2>&1 || break
+    sleep 0.5
+  done
   if [[ -f $HOME/.config/shelley/shelley.db ]]; then
     db_backup="$backup_dir/shelley.db.prior"
     if command -v python3 >/dev/null 2>&1; then
@@ -314,6 +331,7 @@ PY
     if [[ -x $backup_dir/shelley.prior ]]; then
       sudo install -o root -g root -m 0755 "$backup_dir/shelley.prior" /usr/local/bin/shelley.rollback-new
       sudo mv /usr/local/bin/shelley.rollback-new /usr/local/bin/shelley
+      sudo systemctl start shelley.socket 2>/dev/null || true
       sudo systemctl restart shelley.service || true
     fi
   }
@@ -325,6 +343,9 @@ PY
   printf '%s\n' '[Service]' 'Environment=SHELLEY_SKIP_VERSION_CHECK=true' \
     | sudo tee /etc/systemd/system/shelley.service.d/10-iv-managed.conf >/dev/null
   sudo systemctl daemon-reload
+  # Socket back first, so an activation that races the service start reaches the
+  # NEW binary, which now carries the drop-in that disables self-upgrade.
+  sudo systemctl start shelley.socket 2>/dev/null || true
   sudo systemctl start shelley.service
 
   local healthy=false
@@ -342,6 +363,20 @@ PY
     curl -fsS -H 'X-Exedev-Userid: iv-provision-health' \
       --unix-socket "$HOME/.config/shelley/shelley.sock" \
       http://localhost/api/conversations >/dev/null
+
+    # Compare the SERVING version against the pin, not just the binary on disk.
+    # The checks above ask `shelley version`, which executes the file at
+    # /usr/local/bin/shelley -- so they pass even when the running process is a
+    # different, older build (exactly the kgl-songs failure). Ask the socket what
+    # is actually answering.
+    local serving
+    serving=$(curl -fsS -H 'X-Exedev-Userid: iv-provision-health' \
+      --unix-socket "$HOME/.config/shelley/shelley.sock" \
+      http://localhost/version 2>/dev/null | jq -r '.version // empty' || true)
+    if [[ -n $serving && $serving != "$SHELLEY_VERSION" ]]; then
+      echo "provision-iv: Shelley on disk is $SHELLEY_VERSION but the socket is serving $serving" >&2
+      false
+    fi
   fi
   trap - ERR
   printf '%s\n' "$backup_dir" > "$HOME/.local/state/iv-provision/shelley/current"

@@ -88,6 +88,17 @@ done
 
 grep -q 'run as the VM login user, not with sudo' "$script"
 grep -q 'SHELLEY_SKIP_VERSION_CHECK=true' "$script"
+
+# The socket must be stopped BEFORE the service. shelley.service is BindsTo= the
+# socket, so stopping only the service leaves the socket able to activate the old
+# binary, which then self-upgrades over the pinned install (observed on kgl-songs
+# 2026-08-17, where a clean provision silently reverted a minute later).
+socket_stop=$(grep -n 'systemctl stop shelley.socket' "$script" | head -1 | cut -d: -f1)
+service_stop=$(grep -n 'systemctl stop shelley.service' "$script" | head -1 | cut -d: -f1)
+[[ -n $socket_stop && -n $service_stop && $socket_stop -lt $service_stop ]] || {
+  echo "shelley.socket must be stopped before shelley.service (socket=$socket_stop service=$service_stop)" >&2
+  exit 1
+}
 grep -q 'Shelley health check failed; restoring prior binary' "$script"
 grep -q 'sqlite3.connect(src)' "$script"
 grep -q 'unsafe prior skill name' "$script"
