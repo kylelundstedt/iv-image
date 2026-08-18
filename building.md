@@ -67,3 +67,20 @@ commit the result.
 
 `vendor-skills.sh` installs into a throwaway `HOME` and requires `node`/`npx`;
 it is the only maintenance step that needs node.
+
+**Re-run it when cutting a release.** Skills have no version string, so unlike a
+pinned tool — where `apex_version=1.1.13` in a lock file next to
+`APEX_VERSION=1.1.16` in the script is drift you can see at a glance — a stale
+snapshot is invisible. `vendor-skills.sh` is itself the drift detector: run it and
+read `git status`. A clean tree means no upstream moved; a diff is the report.
+
+This is deliberately *not* a separate cadence. Skills refresh on the same clock as
+every other pin here: edit, commit, tag, re-provision. Nor is it automated into a
+scheduled bot PR, because the diff wants real review — skills carry executable
+code (`install-duckdb/eval.sh`, various `.py` files) and one source is a bare
+`curl` of a remote `SKILL.md`, so "latest upstream" means third-party code landing
+on every VM.
+
+Provisioning stays offline and reproducible for the same reason: two VMs
+provisioned from one git sha must get identical skills, which fetching-at-install
+would break.

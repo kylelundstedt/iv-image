@@ -4,17 +4,17 @@ Team-wide defaults for AI agents on iv-provision VMs. Personal dotfiles layer on
 top — anything here can be overridden by `~/.agents/AGENTS.md` from your own
 dotfiles.
 
-The block between the `shared` markers is vendored from the dotfiles repo
-(`provisioning/agents-shared.md` at the commit in `../dotfiles-manifest.pin`)
-by `vendor-skills.sh` — edit it THERE and re-vendor; don't hand-edit here.
-Team-specific sections live outside the markers.
+The block between the `shared` markers is spliced in from
+`provisioning/agents-shared.md` by `vendor-skills.sh` — edit it THERE and
+re-vendor; don't hand-edit here. Team-specific sections live outside the markers.
 
-<!-- >>> shared: dotfiles provisioning/agents-shared.md >>> -->
+<!-- >>> shared: provisioning/agents-shared.md >>> -->
 <!-- Canonical shared agent-instruction sections (Core decision 1 + plan item
 U6): the single source for the sections that appear in BOTH the IV team
-AGENTS.md (iv-provision, vendored at the pinned dotfiles commit) and the personal
-AGENTS.md (agents/.agents/AGENTS.md, embedded verbatim between shared
-markers). Edit HERE; diff-provisioning.sh flags any copy that drifts. -->
+AGENTS.md (iv-provision agent/AGENTS.md, spliced between the shared markers by
+vendor-skills.sh) and the personal AGENTS.md (dotfiles
+agents/.agents/AGENTS.md, embedded verbatim between the same markers). Edit
+HERE. -->
 
 ## Code
 
