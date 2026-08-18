@@ -133,6 +133,15 @@ download_verified() {
   printf '%s  %s\n' "$sha256" "$output" | sha256sum -c -
 }
 
+# True when $1 is at least $2. Used for the coding-agent pins, which are FLOORS
+# rather than exact versions: see install_claude_code.
+version_at_least() {
+  local have=$1 want=$2
+  [[ -n $have ]] || return 1
+  [[ $have == "$want" ]] && return 0
+  [[ $(printf '%s\n%s\n' "$have" "$want" | sort -V | head -1) == "$want" ]]
+}
+
 remove_legacy_quarto() {
   # Reclaim installations created by older iv-provision releases. Do not touch a
   # user-managed quarto binary unless it resolves into the old /opt/quarto tree.
@@ -602,11 +611,27 @@ install_python() {
 # 263 MB versioned copy as orphaned bytes (exactly the shadowed-duplicate waste
 # that keeps agents out of the base image) and leaves self-update managing a
 # directory nothing points at. So mirror the native layout instead.
+# The claude and codex pins are FLOORS, not exact versions.
+#
+# Both agents self-update, and unlike Shelley there is no IV requirement for a
+# specific build -- the pin exists to guarantee a known-good minimum on a fresh VM,
+# not to hold a particular version. Treating it as an exact match made
+# re-provisioning *downgrade* a working agent: observed on iv-provision 2026-08-18,
+# where Claude Code had self-updated to 2.1.235 (then the latest) and provisioning
+# put 2.1.220 back, discarding upstream fixes for no benefit and guaranteeing the
+# next self-update would immediately undo it.
+#
+# The version-pinned tools that carry reproducibility -- duckdb, apex, tigris and
+# friends -- stay exact matches, and so does Shelley, where the exact commit is the
+# whole point.
 install_claude_code() {
   local actual
   actual=$(claude_code_version)
-  echo "== Claude Code $CLAUDE_CODE_VERSION ($CLAUDE_CODE_ASSET_ARCH; installed: ${actual:-missing}) =="
-  [[ $actual == "$CLAUDE_CODE_VERSION" ]] && return
+  echo "== Claude Code >=$CLAUDE_CODE_VERSION ($CLAUDE_CODE_ASSET_ARCH; installed: ${actual:-missing}) =="
+  if version_at_least "$actual" "$CLAUDE_CODE_VERSION"; then
+    [[ $actual == "$CLAUDE_CODE_VERSION" ]] || echo "  keeping newer self-updated $actual (pin is a floor)"
+    return
+  fi
   download_verified \
     "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_CODE_VERSION}/claude-linux-${CLAUDE_CODE_ASSET_ARCH}.tar.gz" \
     "$CLAUDE_CODE_SHA256" "$TMP/claude.tar.gz"
@@ -619,11 +644,15 @@ install_claude_code() {
   [[ $(claude_code_version) == "$CLAUDE_CODE_VERSION" ]]
 }
 
+# Floor, not an exact version -- see install_claude_code.
 install_codex() {
   local actual
   actual=$(codex_version)
-  echo "== Codex $CODEX_VERSION ($CODEX_ASSET_ARCH; installed: ${actual:-missing}) =="
-  [[ $actual == "$CODEX_VERSION" ]] && return
+  echo "== Codex >=$CODEX_VERSION ($CODEX_ASSET_ARCH; installed: ${actual:-missing}) =="
+  if version_at_least "$actual" "$CODEX_VERSION"; then
+    [[ $actual == "$CODEX_VERSION" ]] || echo "  keeping newer self-updated $actual (pin is a floor)"
+    return
+  fi
   # musl build: static, so it does not care what libc the base image ships.
   download_verified \
     "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-${CODEX_ASSET_ARCH}-unknown-linux-musl.tar.gz" \
