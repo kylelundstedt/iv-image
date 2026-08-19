@@ -16,11 +16,16 @@ SHELLEY_TAG=v0.959.914757635
 SHELLEY_COMMIT=33df9d893b0de54d32942c7541841cb0e626baa2
 APEX_VERSION=1.1.16
 # Entire (ACR provider, ADR 0010) and IV's Shelley external-agent plugin.
-# Pinned to 0.8.42 deliberately, NOT latest: entire-agent-shelley 0.1.3 is
-# qualified only against 0.8.42 (see its QUALIFICATION-v0.1.3.md), and 0.10.1 is
-# already published. Bumping the CLI without re-qualifying the plugin risks the
-# capture path in the Phase 1 repositories. Re-qualify, then bump both together.
-ENTIRE_VERSION=0.8.42
+# Pinned deliberately, NOT floating: entire-agent-shelley 0.1.3 speaks a fixed
+# plugin<->CLI protocol (the `info` hook-name set and lifecycle JSON), so the
+# CLI version is only bumped after the plugin is re-qualified against it on the
+# dedicated iv-entire-agent-shelley VM. CLI 0.10.1 was qualified against plugin
+# 0.1.3 on 2026-08-19 -- the full live suite (test-shelley-live.sh, incl. real
+# checkpoint condensation and the entire/checkpoints/v1 ref) passed; 0.10.0
+# passed identically, so 0.10.1 was chosen as the newer stable. The prior pin was
+# 0.8.42; the jump skips 0.9.x entirely, which is why re-qualification (not just a
+# version-and-checksum edit) was the gate. Re-qualify, then bump both together.
+ENTIRE_VERSION=0.10.1
 ENTIRE_PLUGIN_VERSION=0.1.3
 # Coding agents. Owned here rather than by the personal dotfiles so a fleet VM is
 # self-sufficient, and deliberately NOT baked into the base image: agents release
@@ -55,8 +60,8 @@ SHELLEY_SHA256_ARM64=e89091075ae2732b6e073bdb75896be9ce8ef524d23b8c916b036c4c73d
 APEX_SHA256_AMD64=d19c99148cf1d3cd3302c1ff13b893c09f5b3575b00c67f183b0b9ddb7000ac1
 APEX_SHA256_ARM64=dbf306f515301b6c2b91988d142da2e95b89c3efbcc359c03975fb12a811a2d9
 # From the release's own checksums.txt.
-ENTIRE_SHA256_AMD64=82b1d3749a369b1f113b298f61725796e535514d4927f30d5e90914b9631d5a6
-ENTIRE_SHA256_ARM64=b6eec74701b12536147023bb352460ad2739dfc7882a714822a6c363dddfa9dc
+ENTIRE_SHA256_AMD64=eb669fde314a70e5b4bbad21c1c145324816431f125fd2ec01c9e163506f2881
+ENTIRE_SHA256_ARM64=e512b66d238d3cfb858f66c6a362f210d120ac7151c7c0c2f6d3d9e7345bf394
 # Arch-independent: the plugin is a shell/Python polyglot, not a compiled binary.
 # Matches SHA256SUMS at tag v0.1.3 and the hash recorded in its README.
 ENTIRE_PLUGIN_SHA256=1541c304ce86e7b80b74d91a01348daa6a38dd53e068c856c3d832880a55f64e

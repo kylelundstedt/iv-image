@@ -52,7 +52,7 @@ baked into this repository or copied between VMs.
 
 ### Entire (ACR) capture
 
-Provisioning installs the **Entire CLI** (pinned `0.8.42`, checksum-verified) and
+Provisioning installs the **Entire CLI** (pinned `0.10.1`, checksum-verified) and
 IV's **`entire-agent-shelley`** plugin (`0.1.3`), which together implement the
 source-native authoring-context capture path adopted by ADR 0010. Neither needs a
 login: capture works unauthenticated with the `git-branch` checkpoint backend.
@@ -61,9 +61,13 @@ Before 2026-08-18 neither was installed by this script, so the *primary* ACR
 capture path was hand-placed and did not survive a VM recreate — unlike a missing
 tool, that gap loses provenance and does so silently.
 
-The CLI pin is **not** "latest" on purpose: `entire-agent-shelley` 0.1.3 is
-qualified only against Entire CLI 0.8.42, and 0.10.1 is already published.
-Re-qualify the plugin before bumping the CLI, and bump both together.
+The CLI pin is **not** "latest" on purpose. The plugin and CLI speak a fixed
+protocol, so the CLI is only bumped after the plugin is re-qualified against it
+on the dedicated `iv-entire-agent-shelley` VM. CLI `0.10.1` was qualified against
+plugin `0.1.3` on 2026-08-19 (full live suite incl. real checkpoint condensation;
+`0.10.0` passed identically, so the newer stable was chosen); the previous pin
+was `0.8.42`, so the jump skipped `0.9.x` and re-qualification — not a bare
+version edit — was the gate. Re-qualify, then bump both together.
 
 Also installed: the vendored **`entire-agent-agentsview`** adapter
 (`vendor/entire-agent-agentsview/`), ADR 0010's attach-only backfill and
