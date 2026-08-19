@@ -145,14 +145,22 @@ What remains:
 
 ## Authoring and access
 
-- [ ] Decide whether fleet VMs should carry `tag:dev` by default. The
-      `iv-entire-agent-shelley` case was a one-line console fix, but it was
-      invisible until a fleet-wide operation tripped over it, and the failure
-      mode is a *timeout* — indistinguishable at a glance from a down host. A VM
-      created with only a purpose tag silently opts out of fleet reachability.
-      Related: `tailnet.md` notes that attaching `api-tailscale` to a `tag:iv`
-      and tagging the fleet would let a recreated VM rejoin without a manual
-      step. Same underlying question, worth deciding once.
+- [ ] **Tag the fleet `iv` and attach `api-tailscale` to `tag:iv`.** Owner
+      action; written up in `tailnet.md` → "Proposal". Today a recreated VM is
+      inert until someone attaches the integration by hand, and it cannot be
+      reached from another VM to fix — it is not on the tailnet yet, and the
+      `*.exe.xyz` path needs an exe.dev SSH key no VM holds. Rejected on the way
+      there: `auto:all`, which would attach to every future VM including
+      sandboxes and canaries, discarding the consent property the design rests
+      on.
+
+      Note `iv` is an **exe.dev** tag, not a Tailscale one; the two systems share
+      the `tag:` prefix in exe.dev's attach syntax and nothing else. That
+      conflation produced two separate documentation errors, both now corrected.
+      Tailscale's `tag:dev` needs no fleet decision — `provision-iv.sh` hardcodes
+      it into every join key, so any VM this repo joins is tagged by
+      construction. The gap is only a node joined by some other path, as
+      `iv-entire-agent-shelley` was.
 - [ ] Re-attaching `repo-iv-provision-rw` to a second VM should be an event, not
       a state. On 2026-08-19 it was attached to `iv-foundry-stage2` as an
       expedient, a dozen commits were pushed from there, and it was detached the

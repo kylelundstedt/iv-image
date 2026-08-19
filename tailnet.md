@@ -96,20 +96,109 @@ ssh exe.dev integrations attach api-tailscale vm:<vm>
 ```
 
 > **Corrected 2026-08-19.** This section previously named the integration
-> `tailscale-api` and said to attach it via a `tag:iv`. Both were wrong, and had
-> been since they were written: the integration is `api-tailscale` (matching the
-> `api-<service>` convention used by `api-motherduck-mcp` and friends), and it is
-> attached **per VM** — nine of them as of today, none by tag. No fleet VM carries
-> an `iv` tag at all.
+> `tailscale-api` and said to attach it via a `tag:iv`. The name was wrong — it is
+> `api-tailscale`, matching the `api-<service>` convention used by
+> `api-motherduck-mcp` and friends — and it is attached **per VM** today, not by
+> tag.
 >
 > So the `join-tailnet` procedure as documented could never have worked; every node
 > on the tailnet joined through the personal dotfiles `install.sh`, which uses the
 > correct hostname, and nothing surfaced the discrepancy until a VM was created
 > that had no dotfiles overlay to fall back on.
 >
-> Attaching to `tag:iv` and tagging the fleet would be a genuine improvement — it
-> is what lets a recreated VM rejoin without a manual step — but that is a change
-> to make deliberately, not a state to document as though it exists.
+> A first correction on the same day also claimed "no fleet VM carries an `iv` tag
+> at all." That is false: `iv-provision` carries the exe.dev tag `iv`, set when it
+> was created. Checking `tailscale status` — where the tag does not and cannot
+> appear — is what made it look absent. See "Two tag systems" below, which is the
+> confusion that produced both errors.
+
+## Two tag systems, one word
+
+The fleet is subject to two unrelated tagging systems, and the earlier drafts of
+this document silently conflated them. They do not interact at all.
+
+| | **Tailscale tags** | **exe.dev VM tags** |
+| --- | --- | --- |
+| Written | `tag:dev`, `tag:iv-aperture-pilot` | `iv`, `mcp-agent`, `fannie-sflpd` |
+| Set by | the auth key used at `tailscale up`, or the Tailscale admin console | `ssh exe.dev tag <vm> <name>`, or `--tag` at creation |
+| Governs | network reachability and the SSH policy | which integrations a VM receives |
+| Read with | `tailscale status --json` | `curl reflection.int.exe.xyz/tags` |
+| Lives in | the tailnet | the exe.dev control plane |
+
+The trap is that exe.dev's *attachment syntax* borrows Tailscale's `tag:` prefix
+— `integrations attach api-tailscale tag:iv` refers to the **exe.dev** tag `iv`,
+not to anything Tailscale knows about. A reader who has just been thinking about
+`tag:dev` will read that as a Tailscale tag every time.
+
+Both documented errors came from this. "Attach it via a `tag:iv`" was written as
+though exe.dev tags were Tailscale tags; "no fleet VM carries an `iv` tag" was
+written after checking the Tailscale side, where an exe.dev tag can never appear.
+
+### Where each stands today (2026-08-19)
+
+**Tailscale `tag:dev` — uniform, and already automatic.** `provision-iv.sh` mints
+every join key with `"tags":["tag:dev"]` hardcoded, so any VM this repo joins is
+tagged correctly by construction. The SSH policy keys on `tag:dev`, which is what
+makes `ssh <vm>` work fleet-wide.
+
+The one gap is a node that joined by some *other* path. `iv-entire-agent-shelley`
+joined via the old dotfiles `install.sh` carrying only `tag:iv-aperture-pilot`,
+so SSH to it timed out — not refused, *timed out*, which is indistinguishable at
+a glance from a dead host. It went unnoticed for weeks and was fixed by adding
+`tag:dev` in the console (2026-08-19). Purpose tags and `tag:dev` coexist fine:
+`iv-docs` carries `tag:dev` **and** `tag:iv-aperture-admin`.
+
+**exe.dev `iv` — exists on one VM, unused for attachment.** `api-tailscale` is
+attached per VM. Tagging the fleet `iv` and attaching to `tag:iv` is the
+improvement described below.
+
+### Proposal: attach `api-tailscale` to the exe.dev tag `iv`
+
+```bash
+ssh exe.dev tag <vm> iv                              # per existing fleet VM
+ssh exe.dev integrations attach api-tailscale tag:iv # once
+ssh exe.dev new --name=<vm> --tag=iv ...             # new VMs inherit it
+```
+
+What this buys: a **recreated VM rejoins on its own**. Today a fresh VM is inert
+until someone attaches the integration by hand — and it cannot be reached from
+another VM to fix, because it is not on the tailnet yet and `*.exe.xyz` needs an
+exe.dev SSH key that no VM holds. The bootstrap is only breakable from a
+workstation.
+
+It also keeps the consent property this document argues for. The decision moves
+from "attach an integration after creation" to "create it with `--tag=iv`" —
+still deliberate, still made off-VM, but now durable across a recreate instead of
+being lost with the disk.
+
+The cost is honest: every `iv`-tagged VM can mint `tag:dev` auth keys, and the
+proxy does not restrict which Tailscale API paths an attached VM may call. That
+is a real widening. It should be weighed against the actual alternative, which is
+not "nobody holds it" but "somebody attaches it under time pressure and forgets
+to detach" — which is what happened to `repo-iv-provision-rw` on 2026-08-19. If
+hard enforcement is wanted, the broker described at the end of this section is
+the answer, and it is orthogonal to how the integration is attached.
+
+### Why not `auto:all`
+
+exe.dev also offers `integrations attach <name> auto:all`, which attaches to
+every VM in the account **including every VM created in the future**. For
+`api-tailscale` that is the wrong shape, and specifically it discards the
+property the top of this document is built on: the attachment *is* the consent
+signal.
+
+Under `auto:all` there is no signal left — a throwaway sandbox, a client canary,
+or a VM running untrusted generated code would all be able to mint preauthorized
+`tag:dev` keys against the tailnet, and to call any other Tailscale API endpoint
+the backing credential permits, up to and including deleting other nodes. "Least
+authority means it is normally attached to nothing" and `auto:all` cannot both be
+true.
+
+The two integrations exe.dev ships with `auto:all` by default — `reflection` and
+`llm` — are the contrast that makes the rule legible: both are read-mostly and
+scoped to the VM asking, so a new VM having them harms nothing. Tailnet
+membership is not in that class. `tag:iv` is the smallest change that fixes the
+recreate problem without giving that up.
 
 The integration must proxy to the Tailscale API base URL `https://api.tailscale.com`;
 the VM-side endpoint that matters is `https://api-tailscale.int.exe.xyz/api/v2/oauth/token`

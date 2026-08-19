@@ -192,8 +192,11 @@ ssh -O exit <vm>.exe.xyz 2>/dev/null || true
 
 ### 5. Create the new VM (IV dev base)
 
-Use the exe.dev VM tag `iv` so the required integrations are attached. This is
-not the provisioning repository release tag.
+The exe.dev VM tag `iv` is **not** yet wired to integration attachment (as of
+2026-08-19 only `iv-provision` carries it, and nothing attaches by it), so a new
+VM still needs `api-tailscale` attached explicitly at step 7. Note this `iv` is
+an exe.dev tag — unrelated to Tailscale's `tag:dev`, and not the provisioning
+repository release tag either. See `tailnet.md` → "Two tag systems, one word".
 
 Recreate is also the **only** way to pick up a newer base image — exe.dev fixes
 a VM's image at creation. Take the current immutable build ID from the
