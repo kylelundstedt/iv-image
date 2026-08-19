@@ -176,6 +176,13 @@ What remains:
       Deliberately *not* bundled with the `tailnet` tag work above: pairing a
       rename-and-retag with a security-relevant grant is how one of the two ends
       up unreviewed.
+- [x] ~~Narrow the tailnet credential.~~ Done 2026-08-19: `auth_keys` on
+      `tag:dev` only, `devices:core` dropped, old client revoked. Verified after
+      the swap — join path mints preauthorized `tag:dev` keys (200), everything
+      else 403. A broker proved unnecessary; Tailscale's scopes covered it. What
+      a broker would still add is a *per-VM* bound, which the scope model cannot
+      express since every tagged VM shares one credential — revisit only if that
+      specific property is wanted.
 - [ ] Establish that control-plane facts are checked **off-VM**. Three
       consecutive corrections to `tailnet.md`'s tag section were the same
       mistake: reasoning about exe.dev attachment from inside a VM.

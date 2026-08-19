@@ -295,56 +295,83 @@ TOKEN=$(curl -sS -X POST -d grant_type=client_credentials \
 # -> a 1-hour Tailscale API bearer token
 ```
 
-That token is **tailnet-wide, not VM-scoped**. Measured: it enumerated all 17
-nodes on the tailnet, including workstations and phones, not merely the VM that
-asked. Anything the backing OAuth client may do, the VM may do — minting
-preauthorized `tag:dev` keys, and deleting nodes. `provision-iv.sh` relies on
-that delete capability deliberately, to clear a stale node before rejoining under
-the same hostname.
+The token is **tailnet-wide, not VM-scoped**: it is the same credential for every
+tagged VM, so what one tagged VM can do, all of them can. What that amounts to is
+fixed by the scopes on the backing OAuth client, and since 2026-08-19 that is
+**`auth_keys` on `tag:dev`, and nothing else** — the token endpoint echoes it:
 
-So the honest summary of the tag is: **a tagged VM can join or rejoin the tailnet
-unattended, and could also remove other nodes from it.** The exe.dev proxy
-prevents credential *theft* — the OAuth secret never reaches the VM, cannot be
-exfiltrated from it, and rotates centrally — but it does not scope *authority*.
-A compromised tagged VM is a compromised tailnet-admin capability for as long as
-it is compromised, though not one that outlives the tag being removed.
+```json
+{"token_type":"Bearer","expires_in":3600,"scope":"auth_keys","tags":"tag:dev"}
+```
+
+Measured from a tagged VM after the narrowing:
+
+| Operation | Result |
+| --- | --- |
+| Mint a preauthorized `tag:dev` auth key | **200** — the join works |
+| Mint a key for `tag:iv-aperture-admin` | refused — *"requested tags are invalid or not permitted"* |
+| `GET /tailnet/-/devices` (enumerate the tailnet) | **403** |
+| `GET /device/<id>`, `/device/<id>/routes` | **403** |
+| `GET /acl` (policy file), `/dns/nameservers` | **403** |
+
+So the accurate summary of the tag is: **a tagged VM can join or rejoin the
+tailnet unattended, and can do nothing else.** It cannot enumerate the tailnet,
+cannot delete or rename a node, and cannot mint its way into a more privileged
+tag.
+
+Before the narrowing this was materially worse — the same token listed all 17
+nodes and could delete any of them, workstations and phones included. Recorded
+because the reasoning generalises: the exe.dev proxy prevents credential *theft*
+(the secret never reaches the VM, cannot be exfiltrated, rotates centrally) but
+it does not bound *authority*. Only the scopes do that, and they are easy to
+leave at whatever the client was first created with.
 
 That is the trade the tag makes, and why it is a tag of its own rather than a
 capability folded into `tag:iv`: applying it should feel like a decision.
 
-### Narrowing the grant without building a broker
+### How the grant was narrowed (done 2026-08-19)
 
-A broker is **not** the first move. Tailscale's own OAuth scopes do most of the
-job declaratively, on the credential behind the proxy, with no code to write or
-operate — change it once in the Tailscale admin console (Trust credentials) and
-every tagged VM is narrowed at once.
+A broker was **not** the first move, and turned out not to be needed. Tailscale's
+own OAuth scopes did the job declaratively, on the credential behind the proxy,
+with no code to write or operate — one change in the admin console narrowed every
+tagged VM at once.
 
-Two bounds are already in force, measured from a tagged VM 2026-08-19:
-
-- **Tag-bound key minting.** Asking for a `tag:dev` key succeeds; asking for
-  `tag:iv-aperture-admin` is refused — *"requested tags are invalid or not
-  permitted"*. A credential created with `devices:core` or `auth_keys` must name
-  its tags, and keys it mints may carry only those. So a tagged VM cannot mint
-  its way into a more privileged tag.
-- **Not tailnet-admin.** The policy file (`/acl`) and DNS settings both return
-  **403**. The credential is already scoped well below "anything the account can
-  do", which the previous section understated.
-
-What remains is `devices:core` (write), which is what makes deleting *other*
-nodes possible. The natural hardening is to drop it and leave `auth_keys`:
+The client previously held `auth_keys` **and** `devices:core`. Only `auth_keys`
+is required to join; `devices:core` was what allowed deleting other people's
+nodes:
 
 | Scope | Grants | Needed for |
 | --- | --- | --- |
 | `auth_keys` | create/delete auth keys for the named tags | joining — the whole point |
 | `devices:core` | list devices; delete, rename, re-tag any of them | *only* stale-node cleanup |
-| `devices:core:read` | list devices, no writes | a read-only middle ground |
 
-The cost is specific and worth knowing before choosing. `provision-iv.sh` deletes
-a stale node sharing the VM's hostname before joining, or Tailscale appends a
-`-1` suffix. With `auth_keys` alone that cleanup cannot run, and a recreated VM
-reusing a hostname comes back as `<name>-1` — which is precisely the `-1` problem
-documented at the end of this file. Provisioning now detects the 403 and says so
-rather than failing silently, so the trade is visible at the moment it bites.
+In the current admin console the scopes are a Read/Write grid rather than a list
+of scope names, which does not resemble the API documentation. **Settings → Trust
+credentials → Generate**, then under **Keys → Auth Keys** check **Read** and
+**Write**, leave every other row unchecked, and select **`tag:dev`** in the tag
+selector that appears (mandatory once Auth Keys Write is set). OAuth clients are
+immutable, so this is create-and-swap, not an edit.
+
+The credential reaches the VM through exe.dev's `api-tailscale` HTTP-proxy
+integration, in the **Authentication** field as **basic auth** — username =
+client ID, password = client secret. That is not a workaround: Tailscale's token
+endpoint accepts client credentials as HTTP Basic (`client_secret_basic`), which
+is why the VM can POST `grant_type=client_credentials` with no secret in the body
+and get a token back.
+
+Order matters, because one thing cannot be tested in advance. Swap the credential
+first, verify a preauthorized `tag:dev` key still mints, and revoke the old client
+only after that passes — whether `preauthorized: true` falls inside Auth Keys
+Write is not documented anywhere. (It does; verified 2026-08-19.)
+
+**The accepted cost.** `provision-iv.sh` deletes a stale node sharing the VM's
+hostname before joining, or Tailscale appends a `-1` suffix. That cleanup needs
+`devices:core`, so it can no longer run: a recreated VM reusing a hostname now
+comes back as `<name>-1` — precisely the `-1` problem documented at the end of
+this file. Since 3.0.14 provisioning detects the 403 and says what it skipped,
+so the consequence is announced rather than discovered later as a hostname nobody
+can account for. The fix when it happens is to delete the stale node from the
+admin console.
 
 So the ordering is: **scopes first, broker only if scopes are insufficient.** A
 broker is the right answer to "create exactly one key, for exactly this VM,
