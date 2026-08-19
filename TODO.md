@@ -16,12 +16,16 @@ dependency.
 `node`/fnm was considered and deliberately left to dotfiles: the only thing that
 needs it is `vendor-skills.sh`, which runs at authoring time and never on a VM.
 
-Still to do on the **dotfiles** side (its integration here is read-only, so these
-edits must happen elsewhere): retire `diff-provisioning.sh`, which policed a pin
-that no longer exists; move `claude`/`codex`/`uv` from `personal` to `team` in
-`tools.manifest`, since this repo now installs them and the manifest asserts
-`personal ∩ provision-iv.sh = ∅`; and drop the copy of
-`entire-push-exclude.txt` that moved to `provisioning/` here.
+Still to do on the **dotfiles** side. Its integration is read-only from every
+host that has it, including the authoring VM, so these edits must happen on a
+workstation with dotfiles write access:
+
+- [ ] Retire `diff-provisioning.sh`, which policed a pin that no longer exists.
+- [ ] Move `claude`/`codex`/`uv` from `personal` to `team` in `tools.manifest`.
+      This repo installs all three, and the manifest asserts
+      `personal ∩ provision-iv.sh = ∅`, so the assertion is currently false.
+- [ ] Drop the copy of `entire-push-exclude.txt` that moved to `provisioning/`
+      here.
 
 - [ ] **Copy over the load-bearing rationale** now cross-linked into
       `dotfiles/agent_docs/` (`vm-disk-weight.md`, `exe-dev-remediation.md`
@@ -33,7 +37,7 @@ Done 2026-08-18: the CLI (pinned 0.8.42, checksummed), the
 `entire-agent-shelley` plugin (0.1.3), and the vendored
 `entire-agent-agentsview` adapter are installed by `provision-iv.sh` and recorded
 in the lock file; `entire enable` is deliberately left out as a per-repo
-governance action; `ave-adapters` is enrolled; and `entire-push-exclude.txt`
+governance action; and `entire-push-exclude.txt`
 moved into `provisioning/`. `entire-push-check` itself stays in dotfiles, being
 macOS-only and part of the auditing control plane rather than the audited VMs.
 What remains:
@@ -43,7 +47,11 @@ What remains:
       worktrees, so agent-authored commits there carry no ACR — which
       `iv-acr-required-v0` may reject at promotion. Because `.entire/` is tracked
       in git, enrolling is one `entire enable` plus one commit, inherited by all
-      worktrees and future clones.
+      worktrees and future clones. Re-verified 2026-08-19: `~/iv-docs/.entire`
+      exists on `iv-docs`, and no `.entire` exists anywhere under
+      `~/ave-adapters` on `iv-ave-adapters`. (The summary above previously
+      claimed `ave-adapters` was already enrolled; it is not, and that claim has
+      been removed.)
 - [ ] Re-qualify `entire-agent-shelley` against a current Entire CLI. The pin is
       0.8.42 because 0.1.3 was qualified only against it; upstream is at 0.10.1.
       Until then the CLI cannot be bumped without risking the capture path.
@@ -57,39 +65,103 @@ What remains:
       `--no-sync` (all-or-nothing).
 - [ ] Reconcile ADR 0010's "AgentsView is the fallback/backfill/reconciliation
       path" language with the single-producer topology. Both AgentsView and
-      `entire-agent-shelley` read the *same* Shelley SQLite, so it is not a
-      fallback for capture loss; its real value is the read plane (FTS, model
-      attribution, health grading, MCP). Verified 2026-08-18: 134/134 sessions
-      match and nothing is lost — tool traffic is relocated into `tool_calls`
-      (16,417 rows), not dropped.
+      `entire-agent-shelley` read the *same* Shelley SQLite, so AgentsView cannot
+      be a fallback *for capture loss*: if that database is corrupt, truncated, or
+      a conversation never landed in it, both readers fail identically. It is a
+      second reader of one source, not a second source, and calling it a fallback
+      invites exactly the wrong conclusion — that the capture path is redundant
+      when it has a single point of failure.
+
+      Proposed reframing, to replace the fallback language rather than merely
+      soften it. AgentsView is:
+
+      1. the **read plane** — FTS, model attribution, health grading, MCP; and
+      2. the **cross-agent** capture path — it is the only thing that can attach
+         Claude Code or Codex sessions to a checkpoint, which
+         `entire-agent-shelley` cannot do at all. That is a real capture
+         capability, but for *different agents*, not a backup for the same one.
+
+      The single point of failure is the Shelley SQLite itself. If that risk is
+      worth mitigating, the mitigation is backing up that database — which
+      `install_shelley` already does per provision, via the SQLite backup API —
+      not a second reader of it. Verified 2026-08-18: 134/134 sessions match and
+      nothing is lost; tool traffic is relocated into `tool_calls` (16,417 rows),
+      not dropped.
 - [ ] `usage_events` is empty, so `cost_usd` is null and `agentsview usage` /
       `token-use` report nothing. Determine whether Shelley's usage data can be
       projected, or drop the cost-analytics claim.
 
 ## Base image (`kylelundstedt/exeslim`)
 
-- [ ] Merge upstream `ryanlewis/exeslim` — the fork is behind (ours pushed
-      2026-08-01, upstream 2026-08-09), and the weekly rebuild runs against
-      *our* Dockerfile, so upstream security work only lands after a merge.
-- [ ] Fleet VMs are pinned to whatever base they were created from and cannot be
-      migrated (`iv-foundry-stage2` runs `2026-07-29.6.1`; `2026-08-17.10.1`
-      exists). CVEs still land via `iv-apt-upgrade.timer`; what a stale base
-      misses is *newly added packages* (e.g. `nginx-light`, `openssh-client`).
-      Decide a recreate cadence, or accept drift explicitly.
+- [ ] Merge upstream `ryanlewis/exeslim`. Re-checked 2026-08-19: our `main` is at
+      `2d1a663` (2026-08-18) and upstream's last commit is `9e681cc`
+      (2026-08-05, "adopt the shared Renovate config"), so the gap is one
+      housekeeping commit rather than the security backlog the earlier note
+      implied — the dates in that note were wrong in both directions. The
+      structural point stands and is the reason to keep this open: the weekly
+      rebuild runs against *our* Dockerfile, so any future upstream security work
+      reaches the fleet only after a merge.
+- [ ] **Decide a base-image recreate cadence, or accept the drift explicitly.**
+      A VM cannot be migrated to a newer image — exe.dev fixes the image at
+      creation and offers no swap — so this is a recreate decision, not an
+      upgrade one.
+
+      What a stale base actually costs is narrow, and worth stating plainly so
+      the decision is not made out of vague unease: CVEs land via
+      `iv-apt-upgrade.timer` on every VM daily, so a stale base does **not** mean
+      unpatched packages. What it misses is *newly added* packages (e.g.
+      `nginx-light`, `openssh-client`) and image-level changes to the boot path.
+
+      Fleet state 2026-08-19 (from `~/iv-provision.lock`):
+
+      | Base | VMs |
+      | ---- | --- |
+      | `exeslim-dev` `2026-08-18.11.1` | `iv-provision` |
+      | `exeslim-dev` `2026-07-29.6.1` | `iv-docs`, `iv-ave-adapters`, `iv-gitlake`, `iv-gitlake-examples`, `iv-home`, `iv-foundry-stage2` |
+      | pre-exeslim `exe` | `kgl-songs` (`main`, 2026-08-05), `kgl-thoughts` (`nightly`, 2026-06-16), `telnyx-vm` (`nightly`, 2026-07-21) |
+
+      The three `exe`-base VMs are the interesting ones: that base ships
+      `claude`/`codex`/`uv` in `/usr/local/bin`, which is what surfaced the 3.0.9
+      PATH-probe defect. They are the most likely to surface the next
+      base-dependent bug too.
 
 ## Other
 
 - [ ] `provision-docsite`: separate the rendered build directory from the
       nginx docroot so a preview render cannot modify the live site.
-- [ ] Two VMs still run a pre-exeslim exe.dev base: `kgl-songs`
-      (`exe`/`main`, 2026-08-05) and `kgl-thoughts` (`exe`/`nightly`,
-      2026-06-16). That is what surfaced the 3.0.9 probe bug — those bases put
-      `claude`/`codex`/`uv` in `/usr/local/bin`, which no exeslim VM does. The
-      duplicates left behind on `kgl-songs` (~290 MB, now shadowed by
-      `~/.local/bin`) are still on disk; decide whether to remove them or fold
-      it into the recreate-cadence decision above.
-- [ ] `iv-entire-agent-shelley` cannot be reached over the tailnet: it carries
-      only `tag:iv-aperture-pilot`, not `tag:dev`, so the SSH ACL does not
-      cover it, and the `*.exe.xyz` fallback needs an exe.dev key no VM has. It
-      is therefore unreachable from the authoring host and was skipped in the
-      3.0.8/3.0.9 refresh. Fix the ACL or the tag.
+- [ ] The three pre-exeslim `exe`-base VMs still carry duplicate agent binaries
+      in `/usr/local/bin` (`claude`, `codex`, `uv`), shadowed by the copies in
+      `~/.local/bin` that win PATH. Since 3.0.9 the provisioner *reads* those
+      copies correctly, so they are no longer harmful — on `kgl-songs` they are
+      in fact the live ones — but a shadowed 260 MB `claude` is wasted disk
+      wherever the `~/.local/bin` copy wins. Decide whether to prune, or fold
+      into the recreate cadence above.
+- [ ] **`iv-entire-agent-shelley` is unreachable and remains at 2.9.0** — the
+      only fleet VM not on 3.0.9. It is online and tagged `tag:iv-aperture-pilot`
+      but **not** `tag:dev`, and the tailnet SSH policy grants access to
+      `tag:dev` nodes, so SSH from the authoring host times out. The
+      `*.exe.xyz` fallback cannot substitute: that path needs an exe.dev SSH key,
+      which no VM holds. Fix by granting the tailnet SSH rule for
+      `tag:iv-aperture-pilot` in the Tailscale ACL, or by adding `tag:dev` to the
+      node — both are admin-console actions, off-VM.
+
+      Worth noting for the ACL choice: `iv-docs` carries *both* `tag:dev` and
+      `tag:iv-aperture-admin`, so aperture tags and `tag:dev` are not mutually
+      exclusive, and this VM having only the pilot tag looks like an omission
+      rather than a deliberate isolation boundary. Confirm which it is before
+      widening the ACL.
+
+## Authoring and access
+
+- [ ] Re-attaching `repo-iv-provision-rw` to a second VM should be an event, not
+      a state. On 2026-08-19 it was attached to `iv-foundry-stage2` as an
+      expedient, a dozen commits were pushed from there, and it was detached the
+      same day. The README's "Authoring boundary" section now documents the
+      single-writer rule and what to do when an exception is genuinely needed;
+      there is no mechanical enforcement beyond the attachment itself, so this
+      stays a thing to notice rather than a thing that is guaranteed.
+- [ ] `api-tailscale` is currently attached to nothing, which is the intended
+      steady state (attach → join → detach). Note that a *joined* VM stays joined
+      after detachment — verified on `iv-provision` 2026-08-19, which has been
+      routing all fleet SSH with the integration detached. Nothing to do; recorded
+      so the next person does not "fix" the absence.

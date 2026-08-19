@@ -135,21 +135,54 @@ a thin overlay that never touches the team layer. Personal rows in
 
 ## Authoring boundary
 
-GitHub is the canonical source of truth. Changes land on `main` by pull request
-with CI green; **any host may author**, including a fleet VM with a writable repo
-integration attached.
+GitHub is the canonical source of truth, and changes land on `main` by pull
+request with CI green. **Provisioning changes originate on the `iv-provision`
+VM**, which is the only host carrying the `repo-iv-provision-rw` and
+`repo-exeslim-rw` integrations.
 
-This replaces the previous rule that only `klundstedt-mini` could author
-(changed 2026-08-18). Single-workstation authoring was never enforced by
-permissions — fleet VMs with the `repo-iv-provision` integration have always had
-push access — so it was a convention that mostly served to keep the fleet from
-fixing its own provisioner, and to serialise cross-repo pin bumps through one
-laptop. PR + CI is the guardrail that actually holds.
+The write integrations *are* the boundary. This is not a convention asking to be
+remembered: a fleet VM without a writable integration cannot push, so "where did
+this change come from" has a mechanical answer rather than an honour-system one.
 
-What does still hold: no VM worktree is authoritative, and a checkout on a fleet
-VM is expected to sit detached at a release tag (see `consuming.md`). Linux
-compatibility canaries are created on demand and stay read-only unless a writer
-is deliberately attached; delete the canary after validation.
+### Why a single writer, when PR + CI already gates merges
+
+Between 2026-08-18 and 2026-08-19 this section said the opposite — *any host may
+author* — on the reasoning that single-workstation authoring had never been
+enforced by permissions and PR + CI was the guardrail that actually held. Two
+things from the 2026-08-19 fleet refresh argue the other way, and the rule was
+restored the same day.
+
+**PR + CI gates what merges, not what gets tried.** `iv-docs` was found carrying
+two unpushed commits, one of them a fix for the Shelley socket-activation race
+that `main` had *already* fixed differently and better (`bd5c11f`, shipped as
+`3.0.1`). Two hosts independently solved one bug; the fleet VM's version was
+never wrong enough to notice and never right enough to merge. It also documented
+itself as "fixed in 2.9.1" — a tag that was never cut. That is the specific
+failure mode of distributed authoring on a repo whose entire job is to be the one
+agreed description of a machine.
+
+**A VM fixing its own provisioner cannot cleanly test the fix.** The provisioner
+is the thing under change *and* the thing running; a defect that only manifests
+on older bases (as the 3.0.9 PATH-probe bug did) is invisible from a VM that has
+already been re-provisioned. The authoring host is deliberately not a workload
+VM, so it can hold a checkout at an arbitrary revision without disrupting work.
+
+The honest counter is that a rule enforced only by attachment gets broken the
+moment it is inconvenient — which is exactly what happened on 2026-08-19, when
+`repo-iv-provision-rw` was attached to `iv-foundry-stage2` as an expedient and a
+dozen commits were pushed from there. The answer is to make compliance cheap
+rather than to abandon the rule: the authoring VM exists, `ssh iv-provision`
+reaches it from anywhere on the tailnet, and a re-provision there costs ~23
+seconds. If an exception is genuinely needed, attach the writer deliberately,
+land the change by PR, and **detach it again** — the exception should be an
+event, not a new steady state.
+
+### What else holds
+
+No VM worktree is authoritative, and a checkout on a fleet VM is expected to sit
+detached at a release tag (see `consuming.md`). Linux compatibility canaries are
+created on demand and stay read-only unless a writer is deliberately attached;
+delete the canary after validation.
 
 ## General-purpose Markdown with Apex
 
