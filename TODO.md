@@ -16,17 +16,29 @@ dependency.
 `node`/fnm was considered and deliberately left to dotfiles: the only thing that
 needs it is `vendor-skills.sh`, which runs at authoring time and never on a VM.
 
-Still to do on the **dotfiles** side. Its integration is read-only from every
-host that has it, including the authoring VM, so these edits must happen on a
-workstation with dotfiles write access:
+Dotfiles-side edits. `repo-dotfiles` is attached to `vm:iv-provision` with
+**write** (verified 2026-08-19 by a real push-and-delete, correcting the old
+"read-only from every host" note), so these are done from this VM.
 
-- [ ] Retire `diff-provisioning.sh`, which policed a pin that no longer exists.
-- [ ] Move `claude`/`codex`/`uv` from `personal` to `team` in `tools.manifest`.
-      This repo installs all three, and the manifest asserts
-      `personal ∩ provision-iv.sh = ∅`, so the assertion is currently false.
+- [x] ~~Retire `diff-provisioning.sh`.~~ Done differently than framed — it was
+      not retired, because it has live jobs (skills.manifest, the shared-doc
+      markers, and the very tools partition below). dotfiles PR #17 instead
+      trimmed its dead `dotfiles-manifest.pin` checks and fixed its
+      `IV_IMAGE_DIR` default, which still pointed at the pre-rename path and so
+      silently skipped every iv-provision-side check.
+- [x] ~~Move `claude`/`codex`/`uv` `personal` → `team` in `tools.manifest`.~~
+      Done (dotfiles PR #17). Also fixed a latent bug it exposed: the `claude`
+      guard in install.sh was not `want claude`, so `--upgrade` on an IV VM
+      would have reinstalled the floating copy over the pin. Macos parity holds
+      because `want()` skips team tools only on IV VMs. Restoring the drift
+      check caught a stale iv-image-vs-iv-provision comment in the shared
+      AGENTS.md block, now converged across all three copies.
 - [ ] Drop the copy of `entire-push-exclude.txt` that moved to `provisioning/`
-      here.
-
+      here. **Re-scoped 2026-08-19:** it is *not* a dead duplicate — the dotfiles
+      copy is the live input read by dotfiles' own `entire-push-check`
+      (`maint/.local/bin/entire-push-check`, run by the launchd plist). Deduping
+      means repointing that checker at a single source first, then dropping the
+      copy; it is its own change, not a delete.
 - [ ] **Copy over the load-bearing rationale** now cross-linked into
       `dotfiles/agent_docs/` (`vm-disk-weight.md`, `exe-dev-remediation.md`
       Track 2) so `exeslim/FORK.md` and this repo stop dangling.
@@ -188,13 +200,12 @@ What remains:
 
 ## Authoring and access
 
-- [ ] **Create the `tailnet` exe.dev tag and attach `api-tailscale` to it.**
-      Owner action, off-VM; documented in `tailnet.md` → "The `tailnet` tag".
-
-      ```bash
-      ssh exe.dev integrations attach api-tailscale tag:tailnet
-      ssh exe.dev tag <vm> tailnet          # per VM that should stay a member
-      ```
+- [x] ~~**Create the `tailnet` exe.dev tag and attach `api-tailscale` to it.**~~
+      Done 2026-08-19: owner created the `tailnet` tag, attached `api-tailscale`
+      to it, and tagged all 11 VMs. Verified from tagged VMs that the token
+      mints (`api-tailscale=YES` fleet-wide). The credential was subsequently
+      narrowed to `auth_keys` on `tag:dev` (see "Narrow the tailnet credential"
+      below, and `tailnet.md`). Rationale kept for the record:
 
       Decided 2026-08-19: a **dedicated** tag rather than reusing `tag:iv`.
       `iv` already means "gets the MCP integrations"; adding key-minting to it
