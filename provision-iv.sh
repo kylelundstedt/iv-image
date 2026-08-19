@@ -194,10 +194,74 @@ apex_version() { /usr/local/bin/apex --version 2>/dev/null | awk 'NR == 1 {print
 tailscale_version() { tailscale version 2>/dev/null | head -1 || true; }
 entire_version() { "$HOME/.local/bin/entire" --version 2>/dev/null | sed -nE '1s/^Entire CLI //p' || true; }
 uv_version() { "$HOME/.local/bin/uv" --version 2>/dev/null | awk '{print $2}' || true; }
-# `claude --version` prints e.g. "2.1.220 (Claude Code)".
-claude_code_version() { "$HOME/.local/bin/claude" --version 2>/dev/null | awk '{print $1}' || true; }
-# `codex --version` prints e.g. "codex-cli 0.146.0".
-codex_version() { "$HOME/.local/bin/codex" --version 2>/dev/null | awk '{print $NF}' || true; }
+# The FLOOR-pinned agents (claude, codex) must be probed across every copy on
+# PATH, not just at "$HOME/.local/bin/<tool>".
+#
+# WHY. Found 2026-08-19 while refreshing the fleet to 3.0.8. kgl-songs and
+# telnyx-vm predate the exeslim base and run exe.dev's older `exe` image, which
+# ships claude, codex and uv in /usr/local/bin -- a location the exeslim bases do
+# not use. Probing only ~/.local/bin therefore reported "missing" on those VMs
+# while a perfectly good, newer Claude Code was installed and in use. The floor
+# check never ran, and provisioning installed the pin into ~/.local/bin, which
+# ~/.profile prepends to PATH. Measured on kgl-songs: Claude Code 2.1.222 -> the
+# 2.1.220 pin, Codex 0.146.1 -> 0.146.0, plus ~290 MB of shadowed duplicate that
+# the install_claude_code comment below exists specifically to avoid.
+#
+# A floor that cannot see the installed version is not a floor -- it is an exact
+# pin with extra steps, and it downgrades working tools. So resolve like a shell
+# does, with ~/.local/bin prepended exactly as ~/.profile does it:
+#
+#   *_version()          the copy that WINS PATH resolution -- what a user
+#                        actually runs. Recorded in the lock file, because the
+#                        lock must describe the VM rather than the recipe.
+#   *_version_highest()  the newest copy anywhere on PATH. This is what the floor
+#                        compares against: the pin exists to guarantee a known-good
+#                        minimum is PRESENT, so finding one already installed --
+#                        wherever the base image put it -- means there is nothing
+#                        to do and no bytes to duplicate.
+#
+# uv and the Entire CLI stay probed at their absolute paths on purpose: they are
+# exact pins carrying reproducibility, not floors, so "a newer one exists" is not
+# a reason to skip installing the pinned one.
+tool_paths() {
+  local tool=$1
+  {
+    printf '%s\n' "$HOME/.local/bin/$tool"
+    PATH="$HOME/.local/bin:$PATH" type -aP "$tool" 2>/dev/null || true
+  } | awk 'NF && !seen[$0]++'
+}
+
+# Version of one specific copy. `claude --version` prints e.g.
+# "2.1.220 (Claude Code)"; `codex --version` prints e.g. "codex-cli 0.146.0".
+claude_code_version_at() { [[ -x $1 ]] && "$1" --version 2>/dev/null | awk '{print $1}' || true; }
+codex_version_at() { [[ -x $1 ]] && "$1" --version 2>/dev/null | awk '{print $NF}' || true; }
+
+tool_effective_version() {
+  local tool=$1 probe=$2 path
+  while IFS= read -r path; do
+    [[ -x $path ]] || continue
+    "$probe" "$path"
+    return
+  done < <(tool_paths "$tool")
+}
+
+tool_highest_version() {
+  local tool=$1 probe=$2 path found best=
+  while IFS= read -r path; do
+    [[ -x $path ]] || continue
+    found=$("$probe" "$path")
+    [[ -n $found ]] || continue
+    if [[ -z $best ]] || version_at_least "$found" "$best"; then
+      best=$found
+    fi
+  done < <(tool_paths "$tool")
+  printf '%s' "$best"
+}
+
+claude_code_version() { tool_effective_version claude claude_code_version_at; }
+claude_code_version_highest() { tool_highest_version claude claude_code_version_at; }
+codex_version() { tool_effective_version codex codex_version_at; }
+codex_version_highest() { tool_highest_version codex codex_version_at; }
 entire_plugin_version() {
   local p="$HOME/.config/entire/shelley-hooks/bin/entire-agent-shelley"
   [[ -x $p ]] || return 0
@@ -757,11 +821,12 @@ install_python() {
 # friends -- stay exact matches, and so does Shelley, where the exact commit is the
 # whole point.
 install_claude_code() {
-  local actual
+  local actual best
   actual=$(claude_code_version)
+  best=$(claude_code_version_highest)
   echo "== Claude Code >=$CLAUDE_CODE_VERSION ($CLAUDE_CODE_ASSET_ARCH; installed: ${actual:-missing}) =="
-  if version_at_least "$actual" "$CLAUDE_CODE_VERSION"; then
-    [[ $actual == "$CLAUDE_CODE_VERSION" ]] || echo "  keeping newer self-updated $actual (pin is a floor)"
+  if version_at_least "$best" "$CLAUDE_CODE_VERSION"; then
+    [[ $best == "$CLAUDE_CODE_VERSION" ]] || echo "  keeping newer self-updated $best (pin is a floor)"
     return
   fi
   download_verified \
@@ -778,11 +843,12 @@ install_claude_code() {
 
 # Floor, not an exact version -- see install_claude_code.
 install_codex() {
-  local actual
+  local actual best
   actual=$(codex_version)
+  best=$(codex_version_highest)
   echo "== Codex >=$CODEX_VERSION ($CODEX_ASSET_ARCH; installed: ${actual:-missing}) =="
-  if version_at_least "$actual" "$CODEX_VERSION"; then
-    [[ $actual == "$CODEX_VERSION" ]] || echo "  keeping newer self-updated $actual (pin is a floor)"
+  if version_at_least "$best" "$CODEX_VERSION"; then
+    [[ $best == "$CODEX_VERSION" ]] || echo "  keeping newer self-updated $best (pin is a floor)"
     return
   fi
   # musl build: static, so it does not care what libc the base image ships.
@@ -1018,17 +1084,52 @@ chmod 700 "$HOME/.ssh"
 SSH_CFG="$HOME/.ssh/config"
 touch "$SSH_CFG"
 chmod 600 "$SSH_CFG"
-if ! grep -q "# >>> iv-provision ssh >>>" "$SSH_CFG"; then
-  cat >> "$SSH_CFG" <<'EOF'
-
+# Match on tailnet MEMBERSHIP, not on the hostname looking like one.
+#
+# This block used to read `Host iv-* *.ts.net`, which is a guess about naming
+# dressed up as a rule, and the fleet does not obey it: kgl-songs, kgl-thoughts
+# and telnyx-vm are tailnet nodes whose names start with neither. Refreshing the
+# fleet on 2026-08-19 hit "Host key verification failed" on exactly those three,
+# and every documented workaround -- including the upgrade-vm skill's
+# `ssh <vm>.exe.xyz` -- routes around the tailnet instead of fixing it.
+#
+# `tailscale ip -4 %h` answers the question the pattern was trying to ask, in
+# ~7 ms against local state: it exits 0 for a peer in this tailnet and non-zero
+# for anything else, so exe.dev and the public internet are untouched and keep
+# StrictHostKeyChecking's default prompt. If tailscaled is not running the
+# command fails and the match simply does not apply -- fails closed, which is the
+# right direction for a host-key policy.
+#
+# Rewritten in place on every provision rather than appended once. The previous
+# form could only ever be created, never corrected, so a wrong stanza was
+# permanent on an already-provisioned VM and the fix would reach only new ones.
+ssh_block=$(cat <<'EOF'
 # >>> iv-provision ssh >>>
 # VM-to-VM tailnet SSH: accept new host keys, default user exedev.
-Host iv-* *.ts.net
+# Keyed on actual tailnet membership -- fleet names do not share a prefix.
+Match exec "tailscale ip -4 %h >/dev/null 2>&1"
   StrictHostKeyChecking accept-new
   User exedev
 # <<< iv-provision ssh <<<
 EOF
+)
+if grep -q "# >>> iv-provision ssh >>>" "$SSH_CFG"; then
+  if ! diff -q <(sed -n '/# >>> iv-provision ssh >>>/,/# <<< iv-provision ssh <<</p' "$SSH_CFG") \
+       <(printf '%s\n' "$ssh_block") >/dev/null; then
+    ssh_tmp=$(mktemp)
+    awk -v block="$ssh_block" '
+      /# >>> iv-provision ssh >>>/ { print block; skip = 1; next }
+      /# <<< iv-provision ssh <<</ { skip = 0; next }
+      !skip
+    ' "$SSH_CFG" > "$ssh_tmp"
+    cat "$ssh_tmp" > "$SSH_CFG"
+    rm -f "$ssh_tmp"
+    echo "  updated the iv-provision ssh block"
+  fi
+else
+  printf '\n%s\n' "$ssh_block" >> "$SSH_CFG"
 fi
+chmod 600 "$SSH_CFG"
 
 echo "== OS security patching (in-place) =="
 # WHY IN-PLACE, not recreate. Recreating a VM was the original patching plan,
