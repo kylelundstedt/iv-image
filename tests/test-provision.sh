@@ -70,10 +70,14 @@ if [[ -f $vendored ]]; then
   }
 fi
 
-# Entire's CLI pin must stay at the version entire-agent-shelley was qualified
-# against. Bumping one without the other is the failure this guards.
-grep -q 'qualified only against 0.8.42' "$script" || {
-  echo "provisioner no longer records why the Entire CLI pin is held back" >&2
+# Entire's CLI pin must stay at a version entire-agent-shelley was qualified
+# against. Bumping the CLI without re-qualifying the plugin is the failure this
+# guards. Assert the invariant (the pin records a qualification coupling and
+# names the version it was qualified against) rather than a literal version
+# string, which would go stale on every legitimate bump.
+entire_version=$(sed -nE 's/^ENTIRE_VERSION=//p' "$script")
+grep -q "qualified against it" "$script" && grep -q "CLI ${entire_version} was qualified" "$script" || {
+  echo "provisioner no longer records that Entire CLI ${entire_version} was qualified against the plugin" >&2
   exit 1
 }
 
