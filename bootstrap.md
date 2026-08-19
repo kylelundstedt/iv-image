@@ -41,26 +41,29 @@ batteries-included box that is not part of the IV fleet.
 
 ```bash
 # Use the immutable <date>.<run>.<attempt> build ID, from the package page.
-ssh exe.dev new --name=<vm> \
+# --tag=tailnet carries the api-tailscale integration that step 2 needs, and
+# survives a later recreate; see tailnet.md for why it grants nothing else.
+ssh exe.dev new --name=<vm> --tag=tailnet \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
-
-# Step 2 needs this; it is attached per VM, not by tag.
-ssh exe.dev integrations attach api-tailscale vm:<vm>
 ```
 
 ## 2. Join the tailnet (automatic, during step 3)
 
-Nothing to run. `provision-iv.sh` installs tailscale and joins, provided the
-`api-tailscale` integration is attached to the VM:
+Nothing to run, if the VM was created with `--tag=tailnet` in step 1. That tag
+carries the `api-tailscale` integration, and `provision-iv.sh` installs tailscale
+and joins during step 3.
+
+To tag a VM that already exists, or to attach for a single join without tagging:
 
 ```bash
-ssh exe.dev integrations attach api-tailscale vm:<vm>
+ssh exe.dev tag <vm> tailnet                            # durable across recreate
+ssh exe.dev integrations attach api-tailscale vm:<vm>   # one-off; detach after
 ```
 
-That attachment is the consent signal, and least authority means it is normally
-attached to nothing: attach it, provision, detach. Without it the VM stays off the
-tailnet and provisioning says so rather than failing. Until it joins, a VM is
-reachable only over the exe.dev edge. See `tailnet.md`.
+Either way the grant is the consent signal, and an untagged, unattached VM simply
+stays off the tailnet — provisioning says so and carries on rather than failing.
+Until it joins, a VM is reachable only over the exe.dev edge. The `tailnet` tag
+grants this and nothing else, deliberately; see `tailnet.md`.
 
 ## 3. Provision the team software layer
 

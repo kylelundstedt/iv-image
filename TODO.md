@@ -145,33 +145,37 @@ What remains:
 
 ## Authoring and access
 
-- [ ] **Tag the fleet `iv` and attach `api-tailscale` to `tag:iv`.** Owner
-      action; written up in `tailnet.md` → "Proposal". Today a recreated VM is
-      inert until someone attaches the integration by hand, and it cannot be
-      reached from another VM to fix — it is not on the tailnet yet, and the
-      `*.exe.xyz` path needs an exe.dev SSH key no VM holds. Rejected on the way
-      there: `auto:all`, which would attach to every future VM including
-      sandboxes and canaries, discarding the consent property the design rests
-      on.
+- [ ] **Create the `tailnet` exe.dev tag and attach `api-tailscale` to it.**
+      Owner action, off-VM; documented in `tailnet.md` → "The `tailnet` tag".
 
-      Smaller than it first looked: `tag:iv` is **already** an attachment target,
-      carrying `api-motherduck-mcp` and `api-github-copilot-home`. So this is one
-      more attachment onto a working mechanism plus tagging nine VMs, not a new
-      pattern to prove.
+      ```bash
+      ssh exe.dev integrations attach api-tailscale tag:tailnet
+      ssh exe.dev tag <vm> tailnet          # per VM that should stay a member
+      ```
 
-      Decide alongside it: `tag:iv` currently means "gets the MCP integrations",
-      and most of the fleet is tagged `mcp-agent` for that same purpose — two
-      tags doing one job. Adding `api-tailscale` also makes `iv` mean "may mint
-      tailnet auth keys", a materially stronger grant. Settle whether `iv` is the
-      fleet-membership tag with `mcp-agent` folding into it, or whether tailnet
-      joining wants its own tag.
+      Decided 2026-08-19: a **dedicated** tag rather than reusing `tag:iv`.
+      `iv` already means "gets the MCP integrations"; adding key-minting to it
+      would make one tag mean two unrelated things, the second far stronger —
+      the same widening `auto:all` was rejected for, but disguised as reuse.
+      `auto:all` stays rejected outright: it would cover every future VM,
+      including sandboxes running untrusted code.
 
-      Note `iv` is an **exe.dev** tag, not a Tailscale one; the two systems share
-      the `tag:` prefix in exe.dev's attach syntax and nothing else. Tailscale's
-      `tag:dev` needs no fleet decision — `provision-iv.sh` hardcodes it into
-      every join key, so any VM this repo joins is tagged by construction. The
-      gap is only a node joined by some other path, as `iv-entire-agent-shelley`
-      was.
+      Why it is worth doing: a recreated VM currently cannot rejoin unattended,
+      and cannot be fixed from another VM — it is not on the tailnet yet, and
+      `*.exe.xyz` needs an exe.dev SSH key no VM holds, so the bootstrap is
+      breakable only from a workstation.
+
+      Note `tailnet` is an **exe.dev** tag, unrelated to Tailscale's `tag:dev`.
+      Tailscale's side needs no fleet decision — `provision-iv.sh` hardcodes
+      `"tags":["tag:dev"]` into every join key, so any VM this repo joins is
+      tagged by construction; only a node joined by some other path can miss it,
+      as `iv-entire-agent-shelley` did.
+- [ ] Consolidate `tag:iv` and `mcp-agent`, which overlap — both effectively
+      mean "an IV fleet VM that gets the MCP integrations", and the fleet is
+      split across them (`iv-provision` has `iv`; most others have `mcp-agent`).
+      Deliberately *not* bundled with the `tailnet` tag work above: pairing a
+      rename-and-retag with a security-relevant grant is how one of the two ends
+      up unreviewed.
 - [ ] Establish that control-plane facts are checked **off-VM**. Three
       consecutive corrections to `tailnet.md`'s tag section were the same
       mistake: reasoning about exe.dev attachment from inside a VM.
