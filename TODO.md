@@ -136,23 +136,23 @@ What remains:
       in fact the live ones — but a shadowed 260 MB `claude` is wasted disk
       wherever the `~/.local/bin` copy wins. Decide whether to prune, or fold
       into the recreate cadence above.
-- [ ] **`iv-entire-agent-shelley` is unreachable and remains at 2.9.0** — the
-      only fleet VM not on 3.0.9. It is online and tagged `tag:iv-aperture-pilot`
-      but **not** `tag:dev`, and the tailnet SSH policy grants access to
-      `tag:dev` nodes, so SSH from the authoring host times out. The
-      `*.exe.xyz` fallback cannot substitute: that path needs an exe.dev SSH key,
-      which no VM holds. Fix by granting the tailnet SSH rule for
-      `tag:iv-aperture-pilot` in the Tailscale ACL, or by adding `tag:dev` to the
-      node — both are admin-console actions, off-VM.
-
-      Worth noting for the ACL choice: `iv-docs` carries *both* `tag:dev` and
-      `tag:iv-aperture-admin`, so aperture tags and `tag:dev` are not mutually
-      exclusive, and this VM having only the pilot tag looks like an omission
-      rather than a deliberate isolation boundary. Confirm which it is before
-      widening the ACL.
+- [x] ~~`iv-entire-agent-shelley` unreachable over the tailnet.~~ Resolved
+      2026-08-19: `tag:dev` added to the node in the Tailscale console, alongside
+      its existing `tag:iv-aperture-pilot`. The VM was never off the tailnet —
+      `tailscale ping` answered in 3 ms throughout — it was the SSH policy
+      dropping TCP/22, since that rule is keyed on `tag:dev`. Upgraded to 3.0.9
+      the same day; it was the last VM on 2.9.0. Whole fleet is now on one tag.
 
 ## Authoring and access
 
+- [ ] Decide whether fleet VMs should carry `tag:dev` by default. The
+      `iv-entire-agent-shelley` case was a one-line console fix, but it was
+      invisible until a fleet-wide operation tripped over it, and the failure
+      mode is a *timeout* — indistinguishable at a glance from a down host. A VM
+      created with only a purpose tag silently opts out of fleet reachability.
+      Related: `tailnet.md` notes that attaching `api-tailscale` to a `tag:iv`
+      and tagging the fleet would let a recreated VM rejoin without a manual
+      step. Same underlying question, worth deciding once.
 - [ ] Re-attaching `repo-iv-provision-rw` to a second VM should be an event, not
       a state. On 2026-08-19 it was attached to `iv-foundry-stage2` as an
       expedient, a dozen commits were pushed from there, and it was detached the
