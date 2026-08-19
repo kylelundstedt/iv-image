@@ -213,6 +213,25 @@ It keeps the consent property this document is built on. The decision moves from
 still deliberate, still made off-VM, but now durable across a recreate instead of
 being lost with the disk. An untagged VM stays off the tailnet exactly as before.
 
+> Durable across a recreate **done deliberately**: `ssh exe.dev new --tag=tailnet`
+> carries the tag, and `cp` inherits tags from the source VM. A replacement
+> created without the flag is a fresh, untagged VM — the tag is not attached to
+> the *name*. That is the correct behaviour (a new VM should not silently inherit
+> a grant), but it means the win is "one flag at creation" rather than "nothing to
+> remember".
+
+### Re-provisioning an already-joined VM does not re-join it
+
+Tagging the existing fleet is safe to do at any time, including immediately.
+`install_tailscale` returns early when `tailscale status` succeeds — it only
+ensures `RunSSH` is set — and never reaches the key-minting path. That matters
+because the join path *deletes any node sharing this hostname* before joining, to
+avoid Tailscale's `-1` suffix. On an already-joined VM that would delete the node
+out from under the connection running the provisioner.
+
+So the tag changes nothing for a VM that is already a member; it takes effect the
+next time one is created or genuinely needs to re-join.
+
 **The cost, stated plainly.** Every `tailnet`-tagged VM can mint `tag:dev` auth
 keys, and the proxy does not restrict which Tailscale API paths an attached VM
 may call — including deleting other nodes. That is a real widening from
