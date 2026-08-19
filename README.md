@@ -245,11 +245,16 @@ without opening it:
 | `mcp-`   | an MCP server for agents                  | `mcp-motherduck`, `mcp-github-home` |
 | `api-`   | a plain HTTP API proxy (not MCP)          | `api-tailscale`, `api-notion`, `api-fannie-sso` |
 | `bucket-`| object storage                            | `bucket-gitlake-examples` |
+| `svc-`   | a catalog (`integrations catalog`) service credential | `svc-notion-songs`, `svc-telnyx-test` |
 
 Git-credential integrations additionally carry an access **variant**, `-rw` or
 `-ro`, because whether a host can *write* a repo is the load-bearing fact (see
 **Authoring boundary** above). So the full form for repos is
 `repo-<repo>-<rw|ro>`.
+
+**Platform integrations are exempt.** `llm`, `notify`, and `reflection` are
+provided by exe.dev itself, carry fixed single-word names, and are attached
+`auto:all`; the convention governs the integrations *you* create, not these.
 
 The rule that matters most is **name for function, never for an incidental**:
 
@@ -258,7 +263,10 @@ The rule that matters most is **name for function, never for an incidental**:
   not what it is — it is the GitHub **MCP** server. Renamed to `mcp-github-home`.
   The `mcp-` vs `api-` split exists precisely for this: both are `http-proxy`
   integrations, so the *type* cannot tell an agent-facing MCP server from a plain
-  API — only the name can.
+  API — only the name can. The test is **function, not upstream URL**: an MCP
+  server is `mcp-` even when its target is `api.motherduck.com`, which is why
+  `api-motherduck-mcp` (an MCP server wearing an `api-` name) was renamed
+  `mcp-motherduck`.
 - The legacy `github-<owner>-<repo>` and `<owner>-<repo>` schemes name the GitHub
   *account*, an incidental. They are migrated to `repo-<repo>-<rw|ro>`. A github
   integration's name is not referenced by any VM config (git addresses the repo
@@ -300,20 +308,21 @@ list` (or the `/exec` HTTPS API with a read-scoped token), not by inference from
 a VM. Three consecutive corrections to the tailnet docs came from getting this
 wrong.
 
-### Migration status (2026-08-19)
+### Migration status
 
-Git integrations still on a legacy scheme, to rename to `repo-<repo>-<rw|ro>`
-(or delete where a conformant twin already exists):
+The git-integration migration (2026-08-19) is **complete**: every git
+integration is now `repo-<repo>-rw`, created with `--act-as-user` so commits
+attribute to the GitHub account rather than the exe.dev app. The legacy
+`github-<owner>-<repo>` / `<owner>-<repo>` names were recreated or deleted, and
+`repo-dotfiles` gained its `-rw` variant.
 
-| Legacy name | Disposition |
-| ----------- | ----------- |
-| `github-kylelundstedt-entire-agent-shelley` | delete — redundant with live `repo-entire-agent-shelley-rw` |
-| `github-kylelundstedt-rss-feed` | rename to `repo-rss-feed-rw` if the repo is live, else delete (no conformant twin) |
-| `github-kylelundstedt-thoughts` | rename to `repo-thoughts-rw` |
-| `kylelundstedt-apex` | rename to `repo-apex-rw` |
-| `kylelundstedt-songs` | rename to `repo-songs-rw` |
-| `telnyx-vm-github` | rename to `repo-<repo>-rw` (confirm the repo name first) |
-| `repo-dotfiles` | rename to `repo-dotfiles-rw` (missing the access variant) |
+Remaining renames to the convention:
+
+| Current name | Rename to | Note |
+| ------------ | --------- | ---- |
+| `api-motherduck-mcp` | `mcp-motherduck` | It is an MCP server; the name referenced the upstream URL. Team integration, so its `/mcp` URL lives in `agent/mcp-servers.json` and both `mcp.manifest` copies — rename is create-new → repoint → delete-old, then re-register the `motherduck` MCP server on IV VMs. |
+| `notion-songs` | `svc-notion-songs` | catalog service credential |
+| `telnyx-test` | `svc-telnyx-test` | catalog service credential |
 
 ## General-purpose Markdown with Apex
 
