@@ -629,13 +629,29 @@ install_tailscale() {
   fi
 
   # Remove a stale node with this hostname first, or Tailscale appends -2.
-  local did
-  for did in $(curl -sL --max-time 15 -H "Authorization: Bearer $ts_token" \
-      "$ts_api/api/v2/tailnet/-/devices" 2>/dev/null \
-      | jq -r --arg h "$ts_host" '.devices[]? | select(.hostname == $h) | .id' 2>/dev/null); do
-    curl -sL --max-time 15 -X DELETE -H "Authorization: Bearer $ts_token" \
-      "$ts_api/api/v2/device/$did" >/dev/null 2>&1 || true
-  done
+  #
+  # This needs devices:core (write) on the backing credential, and it is the ONLY
+  # part of provisioning that does -- joining itself needs just auth_keys. If the
+  # credential is ever narrowed to auth_keys alone (a reasonable hardening: it
+  # removes a tagged VM's ability to delete other people's nodes), the listing
+  # 403s, jq yields nothing, the loop body never runs, and the VM joins as
+  # <hostname>-1 with no error anywhere. Say so instead, because the symptom
+  # otherwise appears days later as a name nobody can explain.
+  local did ts_devices ts_devices_code
+  ts_devices=$(curl -sL --max-time 15 -w '\n%{http_code}' \
+    -H "Authorization: Bearer $ts_token" \
+    "$ts_api/api/v2/tailnet/-/devices" 2>/dev/null || true)
+  ts_devices_code=$(printf '%s' "$ts_devices" | tail -n1)
+  if [[ $ts_devices_code == 403 ]]; then
+    echo "  note: credential cannot list devices (devices:core absent); skipping" \
+         "stale-node cleanup -- a name collision would join as ${ts_host}-1" >&2
+  else
+    for did in $(printf '%s' "$ts_devices" | sed '$d' \
+        | jq -r --arg h "$ts_host" '.devices[]? | select(.hostname == $h) | .id' 2>/dev/null); do
+      curl -sL --max-time 15 -X DELETE -H "Authorization: Bearer $ts_token" \
+        "$ts_api/api/v2/device/$did" >/dev/null 2>&1 || true
+    done
+  fi
 
   # One-use, preauthorized, tag:dev. Non-ephemeral: an ephemeral node is reaped
   # when it goes offline, which is wrong for a VM that is expected to persist.

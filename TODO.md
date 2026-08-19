@@ -192,13 +192,33 @@ What remains:
       let the authoring host verify attachment rules for itself instead of
       routing every such question through the owner.
 
-      Worth doing deliberately, because the token is a real credential on a VM —
-      exactly what the integration model exists to avoid. Mitigations the API
-      already supports: `cmds` restricts a token to named commands, so a
-      read-only token (`["integrations","ls","tags"]`, no `new`/`rm`/`attach`)
-      cannot change anything; `exp` bounds replay. Generated with
-      `ssh exe.dev ssh-key generate-api-key --exp=30d` plus a `cmds` restriction,
-      stored `0600` outside the repo.
+      **It is one command, run from a workstation** (`--cmds` is the allow-list,
+      `--label` creates a separately revocable SSH key behind the token):
+
+      ```bash
+      ssh exe.dev ssh-key generate-api-key \
+        --label=iv-provision-ro --cmds=integrations,ls,tags --exp=30d
+      ```
+
+      Then, on this VM, with the token in a `0600` file outside the repo:
+
+      ```bash
+      curl -X POST https://exe.dev/exec \
+        -H "Authorization: Bearer $(cat ~/.config/exe/api-token)" -d 'integrations'
+      ```
+
+      Three properties make this a bounded grant rather than an open one.
+      `cmds` is an allow-list of *command names*, and subcommands must be listed
+      explicitly — granting `integrations` does not grant `integrations attach`,
+      so the token literally cannot attach, detach, create or delete. `exp`
+      bounds replay. And `--label` mints a dedicated SSH key, so revoking is
+      removing that one key, with normal SSH access unaffected.
+
+      Still a real credential on a VM, which is exactly what the integration
+      model exists to avoid — so it is the owner's call, not an assumption. The
+      argument for it is that three documentation errors in one evening all came
+      from *inferring* control-plane state that a one-line query would have
+      settled.
 
       Until then, any claim in these docs about *how* something is attached needs
       an owner-side check before it is written down.

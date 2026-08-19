@@ -310,9 +310,47 @@ A compromised tagged VM is a compromised tailnet-admin capability for as long as
 it is compromised, though not one that outlives the tag being removed.
 
 That is the trade the tag makes, and why it is a tag of its own rather than a
-capability folded into `tag:iv`: applying it should feel like a decision. The
-broker above is the fix if the authority itself needs bounding rather than merely
-the credential; it is orthogonal to how the integration is attached.
+capability folded into `tag:iv`: applying it should feel like a decision.
+
+### Narrowing the grant without building a broker
+
+A broker is **not** the first move. Tailscale's own OAuth scopes do most of the
+job declaratively, on the credential behind the proxy, with no code to write or
+operate — change it once in the Tailscale admin console (Trust credentials) and
+every tagged VM is narrowed at once.
+
+Two bounds are already in force, measured from a tagged VM 2026-08-19:
+
+- **Tag-bound key minting.** Asking for a `tag:dev` key succeeds; asking for
+  `tag:iv-aperture-admin` is refused — *"requested tags are invalid or not
+  permitted"*. A credential created with `devices:core` or `auth_keys` must name
+  its tags, and keys it mints may carry only those. So a tagged VM cannot mint
+  its way into a more privileged tag.
+- **Not tailnet-admin.** The policy file (`/acl`) and DNS settings both return
+  **403**. The credential is already scoped well below "anything the account can
+  do", which the previous section understated.
+
+What remains is `devices:core` (write), which is what makes deleting *other*
+nodes possible. The natural hardening is to drop it and leave `auth_keys`:
+
+| Scope | Grants | Needed for |
+| --- | --- | --- |
+| `auth_keys` | create/delete auth keys for the named tags | joining — the whole point |
+| `devices:core` | list devices; delete, rename, re-tag any of them | *only* stale-node cleanup |
+| `devices:core:read` | list devices, no writes | a read-only middle ground |
+
+The cost is specific and worth knowing before choosing. `provision-iv.sh` deletes
+a stale node sharing the VM's hostname before joining, or Tailscale appends a
+`-1` suffix. With `auth_keys` alone that cleanup cannot run, and a recreated VM
+reusing a hostname comes back as `<name>-1` — which is precisely the `-1` problem
+documented at the end of this file. Provisioning now detects the 403 and says so
+rather than failing silently, so the trade is visible at the moment it bites.
+
+So the ordering is: **scopes first, broker only if scopes are insufficient.** A
+broker is the right answer to "create exactly one key, for exactly this VM,
+once" — a per-VM bound that Tailscale's scope model does not express, since every
+tagged VM shares one credential. That is a real gap, but it is a smaller one than
+it looked before measuring, and it costs a service to run and keep available.
 
 ## Upgrading a VM to a new revision
 
