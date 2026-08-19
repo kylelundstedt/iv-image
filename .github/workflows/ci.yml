@@ -34,6 +34,14 @@ jobs:
             find . -path ./.git -prune -o -type f -name '*.sh' -print
           )
 
+      # bash -n parses but does not analyse. `local` outside a function is a
+      # runtime error it accepts, and one shipped that way.
+      - name: Shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          find . -path ./.git -prune -o -type f -name '*.sh' -print0 \
+            | xargs -0 shellcheck -S error
+
       - name: Check JSON
         run: |
           jq empty agent/settings.json

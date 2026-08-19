@@ -8,6 +8,20 @@ script="$repo/provision-iv.sh"
 
 bash -n "$script"
 
+# `bash -n` parses but does not analyse: `local` outside a function is a RUNTIME
+# error it accepts happily. That shipped in the AgentsView auth_token block and
+# fired months later on the first VM where source.env existed, aborting
+# provisioning mid-run. shellcheck catches it as SC2168, along with the rest of
+# that class, so run it at error severity over every shell file here.
+if command -v shellcheck >/dev/null 2>&1; then
+  shellcheck -S error "$script" "$repo"/tests/*.sh "$repo"/vendor-skills.sh || {
+    echo "shellcheck reported errors" >&2
+    exit 1
+  }
+else
+  echo "note: shellcheck not installed; skipping static analysis" >&2
+fi
+
 # The AWS CLI pins are deliberately absent: 307069f moved the AWS CLI out of the
 # default provision path and into the on-demand `bin/install-cloud-cli`, where
 # AWS_CLI_VERSION now lives. Everything below is still installed by

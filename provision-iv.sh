@@ -864,7 +864,6 @@ if [[ -s $SOURCE_ENV ]] \
   # without the token and 200 with it, while /health (unauthenticated) returned
   # 200 the whole time and the daemon was healthy throughout. Every VM running
   # this service has had an unusable CLI since --require-auth was introduced.
-  local av_token av_config
   av_token=$(sed -n 's/^AGENTSVIEW_AUTH_TOKEN=//p' "$SOURCE_ENV" | head -1)
   av_config="$HOME/.agentsview/config.toml"
   if [[ -n $av_token ]]; then
