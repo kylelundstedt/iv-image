@@ -130,14 +130,20 @@ What remains:
 
 ## Base image (`kylelundstedt/exeslim`)
 
-- [ ] Merge upstream `ryanlewis/exeslim`. Re-checked 2026-08-19: our `main` is at
-      `2d1a663` (2026-08-18) and upstream's last commit is `9e681cc`
-      (2026-08-05, "adopt the shared Renovate config"), so the gap is one
-      housekeeping commit rather than the security backlog the earlier note
-      implied — the dates in that note were wrong in both directions. The
-      structural point stands and is the reason to keep this open: the weekly
-      rebuild runs against *our* Dockerfile, so any future upstream security work
-      reaches the fleet only after a merge.
+- [x] ~~Merge upstream `ryanlewis/exeslim`.~~ Nothing to merge — re-verified
+      2026-08-19 against a real `git fetch upstream`, not the stale SHAs the
+      prior note carried. `git merge-base --is-ancestor upstream/main main`
+      returns true: upstream's head `9e681cc` ("adopt the shared Renovate
+      config") is **fully contained** in our `main`, brought in by our merge
+      commit `a22636d`. `git log main..upstream/main` is empty. The earlier
+      "one housekeeping commit behind" was written before that merge landed.
+      Our fork adds eight commits upstream lacks (own GHCR namespace, the
+      `exeslim-dev` image, `openssh-client`/`nginx-light`/`libyaml-0-2`, Shelley
+      units, `FORK.md`) — all legitimate fork content, none of it upstream-bound.
+      The structural point still holds as an *ongoing* task, not a backlog item:
+      the weekly rebuild runs against **our** Dockerfile, so re-fetch upstream
+      periodically and merge if it moves — there is simply nothing outstanding
+      right now.
 - [ ] **Decide a base-image recreate cadence, or accept the drift explicitly.**
       A VM cannot be migrated to a newer image — exe.dev fixes the image at
       creation and offers no swap — so this is a recreate decision, not an
