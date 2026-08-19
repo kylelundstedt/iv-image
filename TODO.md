@@ -42,19 +42,21 @@ moved into `provisioning/`. `entire-push-check` itself stays in dotfiles, being
 macOS-only and part of the auditing control plane rather than the audited VMs.
 What remains:
 
-- [ ] Decide whether `ave-adapters` should be enrolled. Entire is enabled in
-      `fannie-sflpd*` and `iv-docs*` but in **none** of the nine `ave-adapters`
-      worktrees, so agent-authored commits there carry no ACR — which
-      `iv-acr-required-v0` may reject at promotion. Because `.entire/` is tracked
-      in git, enrolling is one `entire enable` plus one commit, inherited by all
-      worktrees and future clones. Re-verified 2026-08-19: `~/iv-docs/.entire`
-      exists on `iv-docs`, and no `.entire` exists anywhere under
-      `~/ave-adapters` on `iv-ave-adapters`. (The summary above previously
-      claimed `ave-adapters` was already enrolled; it is not, and that claim has
-      been removed.)
-- [ ] Re-qualify `entire-agent-shelley` against a current Entire CLI. The pin is
-      0.8.42 because 0.1.3 was qualified only against it; upstream is at 0.10.1.
-      Until then the CLI cannot be bumped without risking the capture path.
+- [x] ~~Enroll `ave-adapters` in Entire ACR capture.~~ Done: `ff5cc95 chore:
+      enable Entire Shelley capture` (2026-08-18) is on `origin/main`, settings
+      byte-identical to `fannie-sflpd`/`iv-docs` (git-branch backend, telemetry
+      off, external agents on), tracking only `.entire/settings.json` and
+      `.entire/.gitignore` so all nine worktrees and future clones inherit it.
+      Confirmed 2026-08-19 from `iv-ave-adapters`: `entire status` reports
+      **Enabled** on `main` with the Shelley lifecycle hooks registered and
+      checkpoints syncing to origin.
+- [x] ~~Re-qualify `entire-agent-shelley` against a current Entire CLI.~~ Done
+      (release 3.0.15). CLI bumped 0.8.42 → 0.10.1 after re-qualifying plugin
+      0.1.3 against it on `iv-entire-agent-shelley` — full live suite incl. real
+      checkpoint condensation passed; 0.10.0 passed identically, 0.10.1 pinned
+      as the newer stable. Evidence in the plugin repo
+      (`QUALIFICATION-v0.1.3-cli0.10.1.md`). Fleet re-provisioned to 3.0.15;
+      every VM now runs Entire CLI 0.10.1 with plugin 0.1.3.
 
 ## AgentsView
 
