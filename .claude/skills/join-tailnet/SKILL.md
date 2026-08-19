@@ -1,6 +1,6 @@
 ---
 name: join-tailnet
-description: Join an exe.dev VM to the Tailscale tailnet on demand. SSHes in over *.exe.xyz, ensures tailscaled is running, and runs tailscale up with a one-use key minted via the api-tailscale proxy.
+description: Manually join an exe.dev VM to the Tailscale tailnet. Provisioning does this automatically since 3.0.5 -- use this only when re-provisioning is not an option. SSHes in over *.exe.xyz, ensures tailscaled is running, and runs tailscale up with a one-use key minted via the api-tailscale proxy.
 ---
 
 # Join Tailnet
@@ -71,10 +71,13 @@ nothing: the check above then reports MISSING on a VM that is correctly
 configured, which is exactly what happened on `iv-provision`. Always list the
 names rather than grepping for one you assume.
 
-This is not hypothetical: `iv-foundry-stage2` sits on the tailnet with **no**
-`api-tailscale` integration, so it joined by a path it can no longer reproduce and
-cannot rejoin if it drops off. `api-tailscale` was attached to nine VMs as of
-2026-08-19 — audit the rest of the fleet the same way.
+`api-tailscale` is normally attached to **nothing**, by design: least authority
+means the control plane attaches it for the join and detaches afterwards. So
+"MISSING" is the expected steady state, not a fault -- attach it, do the work,
+detach.
+
+(An earlier revision of this file claimed it was attached to nine VMs. That was
+misread from a screenshot; it is attached per VM, transiently.)
 
 ## Prerequisites
 

@@ -8,7 +8,7 @@ its own ownership — they are orchestrated in order, not merged into one script
 | Step | What                                          | Owned by                                   |
 | ---- | --------------------------------------------- | ------------------------------------------ |
 | 1    | Create a VM from the **IV base image** (keeps Shelley) | `exeslim` repo + exe.dev           |
-| 2    | Join the tailnet                              | `join-tailnet` skill                       |
+| 2    | Join the tailnet                              | `provision-iv.sh` (automatic, if `api-tailscale` is attached) |
 | 3    | Install the **team software layer**           | `provision-iv.sh` (this repo, public)      |
 | 4    | Clone the work repo + serve its doc site      | repo integration + `provision-docsite`     |
 | 5    | _(optional)_ Personal overlay                 | your dotfiles `install.sh` (separate repo) |
@@ -48,11 +48,19 @@ ssh exe.dev new --name=<vm> \
 ssh exe.dev integrations attach api-tailscale vm:<vm>
 ```
 
-## 2. Join the tailnet (on demand)
+## 2. Join the tailnet (automatic, during step 3)
 
-Run the `join-tailnet` skill (or its commands by hand). The image does not
-auto-join; a fresh VM is reachable only over the exe.dev edge until it joins.
-See `tailnet.md`.
+Nothing to run. `provision-iv.sh` installs tailscale and joins, provided the
+`api-tailscale` integration is attached to the VM:
+
+```bash
+ssh exe.dev integrations attach api-tailscale vm:<vm>
+```
+
+That attachment is the consent signal, and least authority means it is normally
+attached to nothing: attach it, provision, detach. Without it the VM stays off the
+tailnet and provisioning says so rather than failing. Until it joins, a VM is
+reachable only over the exe.dev edge. See `tailnet.md`.
 
 ## 3. Provision the team software layer
 

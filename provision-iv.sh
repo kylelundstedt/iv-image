@@ -506,7 +506,73 @@ install_tailscale() {
       echo "Tailscale SSH disabled (RunSSH=$run_ssh); enabling with 'tailscale set --ssh'"
       sudo tailscale set --ssh || true
     fi
+    return
   fi
+
+  # Not joined. Join automatically IF the api-tailscale integration is attached.
+  #
+  # The attachment is the consent signal, and it is a good one: exe.dev injects the
+  # Tailscale OAuth credential at the network edge, so the proxy is reachable only
+  # from a VM the control plane deliberately attached it to. Least authority means
+  # it is normally attached to nothing -- you attach it, provision, and detach.
+  # Nothing is baked in, no credential touches the VM, and an unattached VM simply
+  # stays off the tailnet. That satisfies what tailnet.md wanted from "on-demand
+  # join" without making a human hand-run an OAuth dance.
+  #
+  # This is what the personal dotfiles install.sh has always done. Moving the
+  # tailscale *install* here in 3.0.x without the *join* silently converted a
+  # one-command bring-up into a manual 12-line procedure -- a regression nobody
+  # asked for, hidden because every existing VM had already joined via dotfiles.
+  #
+  # Set IV_NO_TAILNET=1 to skip even when the integration is attached.
+  if [[ ${IV_NO_TAILNET:-0} == 1 ]]; then
+    echo "  IV_NO_TAILNET=1; not joining the tailnet"
+    return
+  fi
+
+  local ts_api="https://api.tailscale.com" ts_token ts_key ts_host
+  ts_host=$(hostname)
+  # The exchange doubles as the reachability probe: an unattached proxy answers
+  # with a non-JSON error page, so jq needs its own redirect (in a pipeline the
+  # 2>/dev/null binds to curl alone).
+  ts_token=$(curl -sL --connect-timeout 2 --max-time 15 -X POST \
+    -d "grant_type=client_credentials" \
+    https://api-tailscale.int.exe.xyz/api/v2/oauth/token 2>/dev/null \
+    | jq -r '.access_token // empty' 2>/dev/null || true)
+  if [[ -z $ts_token ]]; then
+    echo "  not joined: api-tailscale integration not attached (attach it and re-run to join)"
+    return
+  fi
+
+  # Remove a stale node with this hostname first, or Tailscale appends -2.
+  local did
+  for did in $(curl -sL --max-time 15 -H "Authorization: Bearer $ts_token" \
+      "$ts_api/api/v2/tailnet/-/devices" 2>/dev/null \
+      | jq -r --arg h "$ts_host" '.devices[]? | select(.hostname == $h) | .id' 2>/dev/null); do
+    curl -sL --max-time 15 -X DELETE -H "Authorization: Bearer $ts_token" \
+      "$ts_api/api/v2/device/$did" >/dev/null 2>&1 || true
+  done
+
+  # One-use, preauthorized, tag:dev. Non-ephemeral: an ephemeral node is reaped
+  # when it goes offline, which is wrong for a VM that is expected to persist.
+  ts_key=$(curl -sL --max-time 15 -X POST -H "Authorization: Bearer $ts_token" \
+    -H "Content-Type: application/json" "$ts_api/api/v2/tailnet/-/keys" \
+    -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":false,"preauthorized":true,"tags":["tag:dev"]}}}}' 2>/dev/null \
+    | jq -r '.key // empty' 2>/dev/null || true)
+  unset ts_token
+  if [[ -z $ts_key ]]; then
+    echo "  [!] api-tailscale reachable but key generation failed; not joined" >&2
+    return
+  fi
+
+  # --ssh is not optional: without it a node is reachable only over the exe.dev
+  # edge, and `ssh <vm>` fails with Permission denied (publickey) even when tags
+  # are correct (kgl-songs, 2026-08-17).
+  sudo tailscale up --ssh --accept-dns --accept-routes \
+    --hostname="$ts_host" --authkey="$ts_key" \
+    && echo "  joined the tailnet as $ts_host (Tailscale SSH enabled)" \
+    || echo "  [!] tailscale up failed" >&2
+  unset ts_key
 }
 
 # Entire CLI: the ACR provider adopted by ADR 0010. Absent from this script until

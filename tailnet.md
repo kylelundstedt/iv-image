@@ -4,9 +4,24 @@ title: "Tailnet Join"
 
 ## Contract
 
-A newly created VM starts off the tailnet. There is no baked bootstrap script
-and no automatic join. A VM stays off the tailnet until the `join-tailnet`
-workflow explicitly enables the daemon and runs `tailscale up`.
+A newly created VM starts off the tailnet, and joins during provisioning **iff the
+`api-tailscale` integration is attached to it**. Nothing is baked in and no
+credential ever reaches the VM: exe.dev injects the Tailscale OAuth credential at
+the network edge, so the proxy is reachable only from a VM the control plane
+deliberately attached it to.
+
+That attachment *is* the consent signal. Least authority means it is normally
+attached to nothing — attach it, provision, detach. An unattached VM simply stays
+off the tailnet, and `provision-iv.sh` says so and carries on.
+
+> **Corrected 2026-08-19.** This section previously said there was "no automatic
+> join" and that a VM stays off the tailnet until someone runs the `join-tailnet`
+> workflow by hand. That has never been how fleet VMs actually joined: the personal
+> dotfiles `install.sh` has always performed the join automatically, by exactly the
+> mechanism now in `provision-iv.sh`. Moving the tailscale *install* into the
+> provisioner in 3.0.x without the *join* converted a one-command bring-up into a
+> hand-run OAuth dance — a regression that stayed hidden because every existing VM
+> had already joined via dotfiles.
 
 > **Resolved 2026-08-18.** `provision-iv.sh` now installs `tailscale` from
 > Tailscale's signed apt repository and enables `tailscaled`. Until then the
@@ -15,13 +30,22 @@ workflow explicitly enables the daemon and runs `tailscale up`.
 > a freshly provisioned VM at all. Enabling the daemon does not join the tailnet;
 > membership stays the explicit decision described below.
 
-This is deliberate. Auto-join-on-boot put every VM on the tailnet whether or not
-it belonged there, and the logic to do it had to live somewhere — a per-account
-setup hook or baked-in image code — both of which drifted and coupled unrelated
-things together. On-demand join keeps the default clean: a VM is just a VM until
-you decide it should be a tailnet node.
+The v2.0.0 objection still holds, and this satisfies it. What was removed then was
+**auto-join-on-boot**: it put every VM on the tailnet whether or not it belonged
+there, and the logic had to live in a per-account setup hook or baked-in image
+code, both of which drifted and coupled unrelated things together.
 
-## Joining a VM (the `join-tailnet` skill)
+Joining during provisioning, gated on an integration the control plane attaches,
+is not that. A VM is still just a VM until someone decides it should be a tailnet
+node — the decision is the attachment, made off-VM, rather than a command typed on
+the box. Nothing is baked in, nothing runs on boot, and the credential stays at
+the edge.
+
+## Joining a VM by hand (the `join-tailnet` skill)
+
+Provisioning joins automatically. This skill remains for the cases it cannot
+cover: a VM that was provisioned before the integration was attached and should
+not be re-provisioned right now, or one being re-joined after a node was deleted.
 
 A fresh VM is reachable over the exe.dev edge (`ssh <vm>.exe.xyz`) before it is
 on the tailnet. The `join-tailnet` agent skill uses that edge path to bootstrap
