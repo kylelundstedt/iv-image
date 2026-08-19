@@ -94,6 +94,7 @@ tag/sha before running `provision-iv.sh`.
 
 | Version | Change |
 | ------- | ------ |
+| `3.0.8` | Generate the per-host AgentsView token during provisioning instead of requiring a hand-invented one. It is a self-chosen random secret, so a human typing it added nothing but a manual step that blocked unattended bring-up. Minted once, never rotated (the collector stores it), still per host. |
 | `3.0.7` | Fix `local` used outside a function in the AgentsView `auth_token` block, which aborted provisioning on the first VM to have a `source.env`. `bash -n` accepts it; shellcheck (SC2168) does not, so it now runs in the tests and in CI over every shell file. |
 | `3.0.6` | Identify Shelley by systemd's `MainPID`, not by process name. `KillMode=process` lets terminal helpers outlive a restart, and they are named `shelley` too — so the 3.0.4 "is the override live?" check read a surviving helper's environment and restarted Shelley on **every** run, and the swap's wait-for-exit loop never broke. |
 | `3.0.5` | **Provisioning joins the tailnet again.** Moving the tailscale install into the provisioner without the join had silently replaced a one-command bring-up with a hand-run OAuth dance. The join is gated on the `api-tailscale` integration being attached — the attachment is the consent signal, so nothing is baked in and no credential reaches the VM. Also corrects the docs: there is no `iv` tag, and the integration is normally attached to nothing by design. |

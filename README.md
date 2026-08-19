@@ -86,24 +86,27 @@ clone of that repository.
 
 ### AgentsView source activation
 
-AgentsView `0.38.1` is installed on every IV VM, but its source daemon is
-fail-closed and disabled until both prerequisites exist:
+AgentsView `0.38.1` is installed on every IV VM. Its source daemon is fail-closed:
+it stays disabled until the VM is on the tailnet, since it serves the whole
+normalized archive over HTTP and has no business listening anywhere else.
 
-1. the VM is joined to Tailscale; and
-2. `~/.config/agentsview/source.env` exists with mode `0600` and contains a
-   unique per-host token:
+**Nothing to do by hand.** Provisioning generates the per-host token if it is
+absent, writes it at mode `0600`, and enables the service once the VM is joined.
+The service binds only the VM's Tailscale IPv4 address on port `8080`.
 
-```bash
-mkdir -p ~/.config/agentsview
-printf 'AGENTSVIEW_AUTH_TOKEN=%s\n' '<unique-token>' \
-  > ~/.config/agentsview/source.env
-chmod 600 ~/.config/agentsview/source.env
-~/iv-provision/provision-iv.sh
-```
+The token used to be a manual step: the docs told you to invent a
+`<unique-token>`, paste it into `source.env`, and re-run the provisioner. That was
+ceremony. The value is a self-chosen random secret -- nothing issues it and nothing
+validates it beyond matching what the collector was told -- so a human typing it
+added no security and made the daemon the one part of provisioning that could not
+complete unattended (fixed 2026-08-19).
 
-The user service binds only the VM's Tailscale IPv4 address on port `8080` and
-serves the authenticated HTTP remote-sync endpoints. Provisioning never joins
-the tailnet or creates a fleet-wide token as a side effect.
+It is generated **once and never rotated**: the collector stores the value in its
+own `[[remote_hosts]]` block, so re-minting on every provision would silently break
+remote sync. It is **per host** rather than fleet-wide because it guards read
+access to that VM's entire agent history -- every prompt, response and tool call --
+and a shared secret would turn one compromised VM into a key to the whole fleet's
+archive. Uniqueness is free once it is generated rather than typed.
 
 ## Relationship to the dotfiles repo
 

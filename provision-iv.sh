@@ -850,6 +850,30 @@ mkdir -p "$HOME/.config/systemd/user"
 install -m 0644 "$IV_REPO/systemd/agentsview-source.service" \
   "$HOME/.config/systemd/user/agentsview-source.service"
 SOURCE_ENV="$HOME/.config/agentsview/source.env"
+
+# Mint the per-host token if it is absent. It is a self-chosen random secret --
+# nothing issues it, nothing validates it beyond matching what the collector was
+# told -- so requiring a human to invent one and paste it in was pure ceremony,
+# and it made the AgentsView daemon the one part of provisioning that could not
+# complete unattended.
+#
+# Generated ONCE and never rotated: the collector stores this value in its own
+# [[remote_hosts]] block, so overwriting it here would silently break remote sync
+# on the next provision. Absent means new; present means leave it alone.
+#
+# Per-host rather than fleet-wide because the token guards READ access to the
+# whole normalized archive -- every prompt, response and tool call this VM has
+# seen. A shared secret would make one compromised VM a key to the entire fleet's
+# history. Uniqueness costs nothing once it is generated rather than typed.
+if [[ ! -s $SOURCE_ENV ]]; then
+  mkdir -p "$(dirname "$SOURCE_ENV")"
+  ( umask 077
+    printf 'AGENTSVIEW_AUTH_TOKEN=%s\n' "$(head -c 32 /dev/urandom | base64 | tr -d '\n')" \
+      > "$SOURCE_ENV" )
+  chmod 600 "$SOURCE_ENV"
+  echo "  generated a per-host AgentsView token ($SOURCE_ENV)"
+fi
+
 if [[ -s $SOURCE_ENV ]] \
     && grep -qE '^AGENTSVIEW_AUTH_TOKEN=.+$' "$SOURCE_ENV" \
     && tailscale ip -4 >/dev/null 2>&1; then
