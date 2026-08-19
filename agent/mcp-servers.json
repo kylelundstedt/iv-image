@@ -1,6 +1,6 @@
 {
   "motherduck": {
     "type": "http",
-    "url": "https://api-motherduck-mcp.int.exe.xyz/mcp"
+    "url": "https://mcp-motherduck.int.exe.xyz/mcp"
   }
 }
