@@ -227,6 +227,94 @@ detached at a release tag (see `consuming.md`). Linux compatibility canaries are
 created on demand and stay read-only unless a writer is deliberately attached;
 delete the canary after validation.
 
+## Naming exe.dev integrations and tags
+
+The fleet's integrations and tags are a small shared namespace, and it drifts
+whenever a name records an incidental fact instead of a function. Two conventions
+keep it legible. Both are enforced by review, not code — exe.dev has no schema
+for them — so they live here as the standing rule.
+
+### Integrations: `<kind>-<subject>[-<variant>]`, named for function
+
+The **kind** prefix says what the integration *is*, so its purpose is readable
+without opening it:
+
+| Prefix   | Meaning                                   | Examples |
+| -------- | ----------------------------------------- | -------- |
+| `repo-`  | a git repository credential               | `repo-iv-provision-rw`, `repo-gitlake-ro` |
+| `mcp-`   | an MCP server for agents                  | `mcp-motherduck`, `mcp-github-home` |
+| `api-`   | a plain HTTP API proxy (not MCP)          | `api-tailscale`, `api-notion`, `api-fannie-sso` |
+| `bucket-`| object storage                            | `bucket-gitlake-examples` |
+
+Git-credential integrations additionally carry an access **variant**, `-rw` or
+`-ro`, because whether a host can *write* a repo is the load-bearing fact (see
+**Authoring boundary** above). So the full form for repos is
+`repo-<repo>-<rw|ro>`.
+
+The rule that matters most is **name for function, never for an incidental**:
+
+- `api-github-copilot-home` named the upstream URL's *brand*
+  (`api.githubcopilot.com`) and read as "the GitHub Copilot product", which is
+  not what it is — it is the GitHub **MCP** server. Renamed to `mcp-github-home`.
+  The `mcp-` vs `api-` split exists precisely for this: both are `http-proxy`
+  integrations, so the *type* cannot tell an agent-facing MCP server from a plain
+  API — only the name can.
+- The legacy `github-<owner>-<repo>` and `<owner>-<repo>` schemes name the GitHub
+  *account*, an incidental. They are migrated to `repo-<repo>-<rw|ro>`. A github
+  integration's name is not referenced by any VM config (git addresses the repo
+  by URL, `https://github.int.exe.xyz/<owner>/<repo>.git`), so these renames are
+  cosmetic — no reconfiguration, no re-provision.
+
+### Tags: capability-grants, or grants-nothing identity labels
+
+A tag is one of two things, never both:
+
+- A **capability tag** is named for the capability it grants, and **applying it
+  to a VM is the act of consenting to that grant**. `tailnet` (tailscale
+  key-minting), `notion` (the Notion API), `mcp-agent` (the MCP server set),
+  `fannie-sflpd` (the Fannie repo) all pass.
+- An **identity tag** may exist, but **grants nothing**. The moment an identity
+  tag attaches an integration, fleet *membership* silently governs *access* —
+  which is `auto:all`'s failure mode wearing a friendly name. `tag:iv` failed
+  this: it read as "this is an IV VM" while quietly also granting MotherDuck and
+  GitHub MCP, so it was retired in favour of the capability tag `mcp-agent`.
+  Fleet membership is derived from the intrinsic `iv-*` name prefix instead, so
+  no grant-bearing identity tag is needed.
+
+Three sub-rules follow:
+
+1. **One capability tag per coherent capability.** Never widen an existing grant
+   tag with a new or stronger grant — mint a new tag, so applying it stays a
+   deliberate consent. (This is why the tailnet key-minting credential got its
+   own `tailnet` tag rather than being folded into `tag:iv`.)
+2. **Never let an identity tag attach an integration.**
+3. **A tag that no VM carries but an integration still references is a phantom** —
+   detach it. A tag that VMs carry but no integration grants is dead — remove it.
+
+### Control-plane facts are checked off-VM
+
+A VM's `reflection` integration reports that VM's own tags and integrations, but
+**never the attachment rules** — effects are visible from inside a VM, the rules
+that produce them are not. Confirm attachments with `ssh exe.dev integrations
+list` (or the `/exec` HTTPS API with a read-scoped token), not by inference from
+a VM. Three consecutive corrections to the tailnet docs came from getting this
+wrong.
+
+### Migration status (2026-08-19)
+
+Git integrations still on a legacy scheme, to rename to `repo-<repo>-<rw|ro>`
+(or delete where a conformant twin already exists):
+
+| Legacy name | Disposition |
+| ----------- | ----------- |
+| `github-kylelundstedt-entire-agent-shelley` | delete — redundant with live `repo-entire-agent-shelley-rw` |
+| `github-kylelundstedt-rss-feed` | rename to `repo-rss-feed-rw` if the repo is live, else delete (no conformant twin) |
+| `github-kylelundstedt-thoughts` | rename to `repo-thoughts-rw` |
+| `kylelundstedt-apex` | rename to `repo-apex-rw` |
+| `kylelundstedt-songs` | rename to `repo-songs-rw` |
+| `telnyx-vm-github` | rename to `repo-<repo>-rw` (confirm the repo name first) |
+| `repo-dotfiles` | rename to `repo-dotfiles-rw` (missing the access variant) |
+
 ## General-purpose Markdown with Apex
 
 [Apex](https://github.com/ApexMarkdown/apex) is the Markdown engine for
