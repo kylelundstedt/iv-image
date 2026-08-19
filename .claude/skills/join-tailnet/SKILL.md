@@ -71,22 +71,28 @@ nothing: the check above then reports MISSING on a VM that is correctly
 configured, which is exactly what happened on `iv-provision`. Always list the
 names rather than grepping for one you assume.
 
-`api-tailscale` is normally attached to **nothing**, by design: least authority
-means the control plane attaches it for the join and detaches afterwards. So
-"MISSING" is the expected steady state, not a fault -- attach it, do the work,
-detach.
+`api-tailscale` reaches a VM through the **`tailnet` exe.dev tag**, a tag that
+grants this and nothing else. A VM tagged `tailnet` has it; an untagged VM does
+not, and "MISSING" on such a VM is the expected steady state rather than a fault.
+
+For a one-off — a canary joining once and never again — per-VM attachment is
+still right, and still detached afterwards: `integrations attach api-tailscale
+vm:<vm>`, do the work, detach. The tag exists for VMs meant to stay fleet members
+across a recreate, because a per-VM attachment dies with the VM and leaves the
+replacement unable to rejoin unattended.
 
 (An earlier revision of this file claimed it was attached to nine VMs. That was
-misread from a screenshot; it is attached per VM, transiently.)
+misread from a screenshot.)
 
 ## Prerequisites
 
-- The `api-tailscale` integration must be attached to the VM:
-  `ssh exe.dev integrations attach api-tailscale vm:<vm>`. It is attached per VM
-  today, not by tag. (An earlier note here said "no fleet VM carries an `iv` tag";
-  that was wrong — `iv-provision` does. `iv` is an **exe.dev** tag and never
-  appears in `tailscale status`, which is what made it look absent. See
-  `tailnet.md` → "Two tag systems, one word".)
+- The `api-tailscale` integration must reach the VM — normally by tagging it
+  `ssh exe.dev tag <vm> tailnet`, or per VM for a one-off with
+  `ssh exe.dev integrations attach api-tailscale vm:<vm>`. Note `tailnet` here is
+  an **exe.dev** tag, unrelated to Tailscale's own `tag:dev`; it never appears in
+  `tailscale status`. See `tailnet.md` → "Two tag systems, one word", and confirm
+  attachment off-VM with `ssh exe.dev integrations` — `reflection` shows a VM its
+  own integrations but never the attachment rules.
 - `tailscale` itself is installed by `provision-iv.sh` (since 2026-08-18), which
   also enables `tailscaled`. On a VM that has not been provisioned yet, install
   it first — the `exeslim-dev` base does not carry it, and neither did stock

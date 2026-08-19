@@ -35,8 +35,11 @@ the exe.dev edge (`ssh <vm>.exe.xyz`). To put it on IV's tailnet, run the
 over `*.exe.xyz` and runs `tailscale up` with a one-use key minted through the
 `api-tailscale` proxy. After it joins, use `ssh <vm>` (Tailscale) for the rest.
 
-Attach the `api-tailscale` integration to the VM (per VM, not by tag);
-the join step needs it to mint the key. See `tailnet.md` for the full flow.
+The join step needs the `api-tailscale` integration, which reaches a VM through
+the **`tailnet` exe.dev tag** — `ssh exe.dev new --name=<vm> --tag=tailnet`, or
+`ssh exe.dev tag <vm> tailnet` for an existing one. Per-VM attachment still works
+for a one-off. See `tailnet.md` for the full flow and why the tag grants nothing
+else.
 
 ## Upgrading to a new revision
 

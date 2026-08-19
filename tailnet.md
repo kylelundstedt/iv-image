@@ -88,18 +88,25 @@ After it joins, use `ssh <vm>` (Tailscale SSH) for everything else.
 ## Required exe.dev integration
 
 The join step needs the `api-tailscale` integration attached to the VM so it can
-mint the key. **Attach it explicitly, per VM:**
+mint the key. It attaches via the **`tailnet` tag** — a tag that grants this and
+nothing else (see "The `tailnet` tag" below):
 
 ```bash
-ssh exe.dev new --name=<vm>
-ssh exe.dev integrations attach api-tailscale vm:<vm>
+ssh exe.dev new --name=<vm> --tag=tailnet     # joins on first provision
+ssh exe.dev tag <vm> tailnet                  # or tag an existing VM, then re-provision
 ```
+
+Per-VM attachment (`integrations attach api-tailscale vm:<vm>`) still works and
+is the right tool for a one-off — a canary that should join once and never again.
+The tag is for VMs that are meant to stay fleet members across a recreate, since
+a per-VM attachment dies with the VM.
 
 > **Corrected 2026-08-19.** This section previously named the integration
 > `tailscale-api` and said to attach it via a `tag:iv`. The name was wrong — it is
 > `api-tailscale`, matching the `api-<service>` convention used by
-> `api-motherduck-mcp` and friends — and it is attached **per VM** today, not by
-> tag.
+> `api-motherduck-mcp` and friends. Tag-based attachment turned out to be the
+> right shape after all, but through a dedicated `tailnet` tag rather than `iv`,
+> which already carries the MCP integrations.
 >
 > So the `join-tailnet` procedure as documented could never have worked; every node
 > on the tailnet joined through the personal dotfiles `install.sh`, which uses the
@@ -170,45 +177,77 @@ hypothetical for this fleet; it is how the MCP integrations already arrive.
 > plane from inside a VM, which can see effects but not rules. **Confirm
 > attachment from `ssh exe.dev integrations`, off-VM.**
 
-### Proposal: attach `api-tailscale` to the exe.dev tag `iv` too
+### The `tailnet` tag
+
+`api-tailscale` attaches to a **dedicated exe.dev tag that grants nothing else**:
 
 ```bash
-ssh exe.dev tag <vm> iv                              # per existing fleet VM
-ssh exe.dev integrations attach api-tailscale tag:iv # once
-ssh exe.dev new --name=<vm> --tag=iv ...             # new VMs inherit it
+ssh exe.dev integrations attach api-tailscale tag:tailnet   # once
+ssh exe.dev tag <vm> tailnet                                # per VM that should join
+ssh exe.dev new --name=<vm> --tag=tailnet ...               # new VMs inherit it
 ```
 
-This is smaller than it first looked. `tag:iv` already exists and already gates
-two integrations, so the proposal is one more attachment onto an established
-mechanism, plus tagging the nine fleet VMs that lack it — not a new pattern to
-introduce and prove.
+**Not `tag:iv`**, though that was the obvious candidate and the earlier proposal
+here. `iv` already means "gets the MCP integrations"; adding `api-tailscale`
+would have made one tag mean two unrelated things, the second far stronger than
+the first. The whole argument against `auto:all` below is about not widening who
+can mint auth keys — quietly folding that capability into a tag handed out for
+MCP access is the same mistake at smaller scale, and harder to notice because it
+looks like reuse rather than expansion.
 
-What it buys: a **recreated VM rejoins on its own**. Today a fresh VM is inert
+A tag named for the capability also survives contact with people. `tag:iv` reads
+as "our VMs", so tagging a new box `iv` looks like housekeeping; `tag:tailnet`
+reads as "this VM may join the tailnet", which is the decision actually being
+made. Tag names are the only documentation an operator sees at the moment they
+act.
+
+**What it buys.** A recreated VM rejoins on its own. Today a fresh VM is inert
 until someone attaches the integration by hand — and it cannot be reached from
 another VM to fix, because it is not on the tailnet yet and `*.exe.xyz` needs an
-exe.dev SSH key that no VM holds. The bootstrap is only breakable from a
-workstation.
+exe.dev SSH key that no VM holds. The bootstrap is breakable only from a
+workstation. `--tag=tailnet` at creation closes that hole without weakening
+anything else.
 
-One thing to decide deliberately rather than inherit: `tag:iv` currently means
-"gets the MCP integrations", and the fleet is mostly tagged `mcp-agent` for the
-same purpose — two tags doing one job. Adding `api-tailscale` to `tag:iv` also
-makes that tag mean "may mint tailnet auth keys", which is a materially stronger
-grant. If the fleet is going to be tagged `iv` wholesale, worth settling whether
-`iv` is the fleet-membership tag (and `mcp-agent` folds into it) or whether
-tailnet joining deserves a tag of its own.
-
-It also keeps the consent property this document argues for. The decision moves
-from "attach an integration after creation" to "create it with `--tag=iv`" —
+It keeps the consent property this document is built on. The decision moves from
+"attach an integration after creation" to "create it with `--tag=tailnet`" —
 still deliberate, still made off-VM, but now durable across a recreate instead of
-being lost with the disk.
+being lost with the disk. An untagged VM stays off the tailnet exactly as before.
 
-The cost is honest: every `iv`-tagged VM can mint `tag:dev` auth keys, and the
-proxy does not restrict which Tailscale API paths an attached VM may call. That
-is a real widening. It should be weighed against the actual alternative, which is
-not "nobody holds it" but "somebody attaches it under time pressure and forgets
-to detach" — which is what happened to `repo-iv-provision-rw` on 2026-08-19. If
-hard enforcement is wanted, the broker described at the end of this section is
-the answer, and it is orthogonal to how the integration is attached.
+> Durable across a recreate **done deliberately**: `ssh exe.dev new --tag=tailnet`
+> carries the tag, and `cp` inherits tags from the source VM. A replacement
+> created without the flag is a fresh, untagged VM — the tag is not attached to
+> the *name*. That is the correct behaviour (a new VM should not silently inherit
+> a grant), but it means the win is "one flag at creation" rather than "nothing to
+> remember".
+
+### Re-provisioning an already-joined VM does not re-join it
+
+Tagging the existing fleet is safe to do at any time, including immediately.
+`install_tailscale` returns early when `tailscale status` succeeds — it only
+ensures `RunSSH` is set — and never reaches the key-minting path. That matters
+because the join path *deletes any node sharing this hostname* before joining, to
+avoid Tailscale's `-1` suffix. On an already-joined VM that would delete the node
+out from under the connection running the provisioner.
+
+So the tag changes nothing for a VM that is already a member; it takes effect the
+next time one is created or genuinely needs to re-join.
+
+**The cost, stated plainly.** Every `tailnet`-tagged VM can mint `tag:dev` auth
+keys, and the proxy does not restrict which Tailscale API paths an attached VM
+may call — including deleting other nodes. That is a real widening from
+"attached to nothing", and the tag should be applied to VMs that genuinely belong
+on the tailnet rather than as a default. It should be weighed against the actual
+alternative, which is not "nobody holds it" but "somebody attaches it under time
+pressure and forgets to detach" — which is what happened to
+`repo-iv-provision-rw` on 2026-08-19. If hard enforcement is wanted, the broker
+described at the end of this section is the answer, and it is orthogonal to how
+the integration is attached.
+
+`tag:iv` and `mcp-agent` are left alone. They overlap — both effectively mean
+"an IV fleet VM that gets the MCP integrations", and consolidating them is worth
+doing — but that is a separate cleanup with its own blast radius, and doing it in
+the same motion as a security-relevant grant is how one of the two ends up
+unreviewed.
 
 ### Why not `auto:all`
 
