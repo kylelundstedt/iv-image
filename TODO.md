@@ -154,13 +154,34 @@ What remains:
       sandboxes and canaries, discarding the consent property the design rests
       on.
 
+      Smaller than it first looked: `tag:iv` is **already** an attachment target,
+      carrying `api-motherduck-mcp` and `api-github-copilot-home`. So this is one
+      more attachment onto a working mechanism plus tagging nine VMs, not a new
+      pattern to prove.
+
+      Decide alongside it: `tag:iv` currently means "gets the MCP integrations",
+      and most of the fleet is tagged `mcp-agent` for that same purpose — two
+      tags doing one job. Adding `api-tailscale` also makes `iv` mean "may mint
+      tailnet auth keys", a materially stronger grant. Settle whether `iv` is the
+      fleet-membership tag with `mcp-agent` folding into it, or whether tailnet
+      joining wants its own tag.
+
       Note `iv` is an **exe.dev** tag, not a Tailscale one; the two systems share
-      the `tag:` prefix in exe.dev's attach syntax and nothing else. That
-      conflation produced two separate documentation errors, both now corrected.
-      Tailscale's `tag:dev` needs no fleet decision — `provision-iv.sh` hardcodes
-      it into every join key, so any VM this repo joins is tagged by
-      construction. The gap is only a node joined by some other path, as
-      `iv-entire-agent-shelley` was.
+      the `tag:` prefix in exe.dev's attach syntax and nothing else. Tailscale's
+      `tag:dev` needs no fleet decision — `provision-iv.sh` hardcodes it into
+      every join key, so any VM this repo joins is tagged by construction. The
+      gap is only a node joined by some other path, as `iv-entire-agent-shelley`
+      was.
+- [ ] Establish that control-plane facts are checked **off-VM**. Three
+      consecutive corrections to `tailnet.md`'s tag section were the same
+      mistake: reasoning about exe.dev attachment from inside a VM.
+      `reflection.int.exe.xyz` reports a VM's own tags and its own integrations,
+      never the attachment *rules*, so from a VM there is no way to tell whether
+      an integration arrived by `vm:`, `tag:`, or `auto:all` — effects are
+      visible, rules are not. `ssh exe.dev integrations` is the authority, and
+      the authoring host cannot reach it (no exe.dev SSH key on a VM). Until
+      that gap is closed, any claim in these docs about *how* something is
+      attached needs an owner-side check before it is written down.
 - [ ] Re-attaching `repo-iv-provision-rw` to a second VM should be an event, not
       a state. On 2026-08-19 it was attached to `iv-foundry-stage2` as an
       expedient, a dozen commits were pushed from there, and it was detached the

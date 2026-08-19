@@ -148,11 +148,29 @@ a glance from a dead host. It went unnoticed for weeks and was fixed by adding
 `tag:dev` in the console (2026-08-19). Purpose tags and `tag:dev` coexist fine:
 `iv-docs` carries `tag:dev` **and** `tag:iv-aperture-admin`.
 
-**exe.dev `iv` — exists on one VM, unused for attachment.** `api-tailscale` is
-attached per VM. Tagging the fleet `iv` and attaching to `tag:iv` is the
-improvement described below.
+**exe.dev `iv` — a live attachment target already, carrying two integrations.**
+`tag:iv` attaches `api-motherduck-mcp` and `api-github-copilot-home`. The
+evidence is `iv-provision` itself: it carries the tag `iv` and **not**
+`mcp-agent`, yet receives both — while `kgl-songs`, tagged
+`kylelundstedt-songs`, receives neither. Tag-based attachment is not a
+hypothetical for this fleet; it is how the MCP integrations already arrive.
 
-### Proposal: attach `api-tailscale` to the exe.dev tag `iv`
+> **Corrected 2026-08-19 (third time in this section).** The text here said `iv`
+> was "unused for attachment", which was wrong, and wrong in a way worth naming:
+> it was *inferred* rather than checked. From inside a VM, `reflection` reports
+> that VM's own tags and its own integrations — it does not report attachment
+> *rules*, so no VM can see whether an integration arrived by `vm:`, by `tag:`,
+> or by `auto:all`. Seeing "only `iv-provision` carries `iv`" and concluding
+> "therefore nothing attaches by it" does not follow.
+>
+> Worse, the disproof was already in the data collected: `iv-provision` has `iv`
+> and no `mcp-agent`, and has both MCP integrations. Read properly, that single
+> row shows `tag:iv` attaching things. Three successive corrections in this one
+> section have all been the same mistake — reasoning about the exe.dev control
+> plane from inside a VM, which can see effects but not rules. **Confirm
+> attachment from `ssh exe.dev integrations`, off-VM.**
+
+### Proposal: attach `api-tailscale` to the exe.dev tag `iv` too
 
 ```bash
 ssh exe.dev tag <vm> iv                              # per existing fleet VM
@@ -160,11 +178,24 @@ ssh exe.dev integrations attach api-tailscale tag:iv # once
 ssh exe.dev new --name=<vm> --tag=iv ...             # new VMs inherit it
 ```
 
-What this buys: a **recreated VM rejoins on its own**. Today a fresh VM is inert
+This is smaller than it first looked. `tag:iv` already exists and already gates
+two integrations, so the proposal is one more attachment onto an established
+mechanism, plus tagging the nine fleet VMs that lack it — not a new pattern to
+introduce and prove.
+
+What it buys: a **recreated VM rejoins on its own**. Today a fresh VM is inert
 until someone attaches the integration by hand — and it cannot be reached from
 another VM to fix, because it is not on the tailnet yet and `*.exe.xyz` needs an
 exe.dev SSH key that no VM holds. The bootstrap is only breakable from a
 workstation.
+
+One thing to decide deliberately rather than inherit: `tag:iv` currently means
+"gets the MCP integrations", and the fleet is mostly tagged `mcp-agent` for the
+same purpose — two tags doing one job. Adding `api-tailscale` to `tag:iv` also
+makes that tag mean "may mint tailnet auth keys", which is a materially stronger
+grant. If the fleet is going to be tagged `iv` wholesale, worth settling whether
+`iv` is the fleet-membership tag (and `mcp-agent` folds into it) or whether
+tailnet joining deserves a tag of its own.
 
 It also keeps the consent property this document argues for. The decision moves
 from "attach an integration after creation" to "create it with `--tag=iv`" —
