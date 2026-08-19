@@ -122,7 +122,10 @@ After cloning a repo (see above):
 ssh <vm>.exe.xyz "provision-docsite ~/<repo>"
 ```
 
-`provision-docsite` renders the Markdown project with Apex and serves `_site`
-on `:8000` with **nginx** (gzip + immutable cache headers). To re-render after
-edits, run `render-site ~/<repo>` — no restart needed because nginx serves
-whatever is in `_site`.
+`provision-docsite` renders the Markdown project with Apex and serves a
+**published release** on `:8000` with **nginx** (gzip + immutable cache headers).
+The build tree (`_site`) is rebuilt destructively on each render, so nginx serves
+from `<repo>/.docsite/current` (a symlink to a timestamped release) instead — a
+failed or in-flight render never touches the live site. To refresh after edits,
+re-run `provision-docsite ~/<repo>` (not bare `render-site`); the content swaps
+atomically with no restart.
