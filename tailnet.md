@@ -29,7 +29,7 @@ the tailnet:
 
 1. SSH into the VM over `*.exe.xyz` (no tailnet required).
 2. Mint a one-use, ephemeral, preauthorized `tag:dev` auth key by POSTing to the
-   `tailscale-api` HTTP proxy (`https://tailscale-api.int.exe.xyz`). exe.dev
+   `api-tailscale` HTTP proxy (`https://api-tailscale.int.exe.xyz`). exe.dev
    injects the real API credential at the proxy layer, so the VM never sees the
    secret.
 3. Run `tailscale up --ssh --accept-dns --hostname=$(hostname)` with that key.
@@ -43,7 +43,7 @@ set -euo pipefail
 # via the proxy, then mint against the public API (the proxy injects
 # Authorization on every request, so only the exchange goes through it).
 TOKEN=$(curl -fsSL -X POST -d "grant_type=client_credentials" \
-  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -er .access_token)
+  https://api-tailscale.int.exe.xyz/api/v2/oauth/token | jq -er .access_token)
 trap 'rm -f "${auth_config:-}"; unset TOKEN KEY' EXIT
 auth_config=$(mktemp)
 chmod 600 "$auth_config"
@@ -63,16 +63,32 @@ After it joins, use `ssh <vm>` (Tailscale SSH) for everything else.
 
 ## Required exe.dev integration
 
-The join step needs the `tailscale-api` integration attached to the VM so it can
-mint the key. Attach it via the `iv` tag and create VMs with that tag:
+The join step needs the `api-tailscale` integration attached to the VM so it can
+mint the key. **Attach it explicitly, per VM:**
 
 ```bash
-ssh exe.dev integrations attach tailscale-api tag:iv
-ssh exe.dev new --name=<vm> --tag=iv
+ssh exe.dev new --name=<vm>
+ssh exe.dev integrations attach api-tailscale vm:<vm>
 ```
 
+> **Corrected 2026-08-19.** This section previously named the integration
+> `tailscale-api` and said to attach it via a `tag:iv`. Both were wrong, and had
+> been since they were written: the integration is `api-tailscale` (matching the
+> `api-<service>` convention used by `api-motherduck-mcp` and friends), and it is
+> attached **per VM** — nine of them as of today, none by tag. No fleet VM carries
+> an `iv` tag at all.
+>
+> So the `join-tailnet` procedure as documented could never have worked; every node
+> on the tailnet joined through the personal dotfiles `install.sh`, which uses the
+> correct hostname, and nothing surfaced the discrepancy until a VM was created
+> that had no dotfiles overlay to fall back on.
+>
+> Attaching to `tag:iv` and tagging the fleet would be a genuine improvement — it
+> is what lets a recreated VM rejoin without a manual step — but that is a change
+> to make deliberately, not a state to document as though it exists.
+
 The integration must proxy to the Tailscale API base URL `https://api.tailscale.com`;
-the VM-side endpoint that matters is `https://tailscale-api.int.exe.xyz/api/v2/oauth/token`
+the VM-side endpoint that matters is `https://api-tailscale.int.exe.xyz/api/v2/oauth/token`
 (the only call that needs the injected credentials — everything after uses the
 returned 1h Bearer token against the public API).
 
@@ -153,7 +169,7 @@ ephemeral node to be reaped. The `upgrade-vm` skill documents both paths.
 
 - A VM that is never joined simply stays reachable over `ssh <vm>.exe.xyz`.
 - Override the proxy URL, tag, or hostname by editing the join command
-  (`tailscale-api.int.exe.xyz`, `tag:dev`, `$(hostname)`).
-- If the `tailscale-api` integration is backed by a Tailscale API access token,
+  (`api-tailscale.int.exe.xyz`, `tag:dev`, `$(hostname)`).
+- If the `api-tailscale` integration is backed by a Tailscale API access token,
   that token has the normal API-token expiry and must be rotated in exe.dev
   before it expires.

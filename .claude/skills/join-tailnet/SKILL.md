@@ -1,12 +1,12 @@
 ---
 name: join-tailnet
-description: Join an exe.dev VM to the Tailscale tailnet on demand. SSHes in over *.exe.xyz, ensures tailscaled is running, and runs tailscale up with a one-use key minted via the tailscale-api proxy.
+description: Join an exe.dev VM to the Tailscale tailnet on demand. SSHes in over *.exe.xyz, ensures tailscaled is running, and runs tailscale up with a one-use key minted via the api-tailscale proxy.
 ---
 
 # Join Tailnet
 
 Joins an exe.dev VM to the IV Tailscale tailnet. The VM must have
-the `tailscale-api` integration attached (use `--tag=iv` at creation).
+the `api-tailscale` integration attached (attach it per VM; there is no tag).
 
 ## Usage
 
@@ -27,7 +27,7 @@ sudo systemctl enable --now tailscaled
 # via the proxy, then mint against the public API (the proxy injects
 # Authorization on every request, so only the exchange goes through it).
 TOKEN=$(curl -fsSL -X POST -d "grant_type=client_credentials" \
-  https://tailscale-api.int.exe.xyz/api/v2/oauth/token | jq -er .access_token)
+  https://api-tailscale.int.exe.xyz/api/v2/oauth/token | jq -er .access_token)
 trap 'rm -f "${auth_config:-}"; unset TOKEN KEY' EXIT
 auth_config=$(mktemp)
 chmod 600 "$auth_config"
@@ -50,27 +50,37 @@ After it joins, use `ssh <vm>` (Tailscale SSH) for everything else.
 ## Preflight: confirm the integration is actually attached
 
 Do this **first**. The mint fails at the OAuth exchange with an opaque proxy
-error when `tailscale-api` is missing, and nothing connects that to a tag that
-was never set at creation time.
+error when `api-tailscale` is missing, and nothing connects that failure back to
+an integration nobody attached.
 
 ```bash
 ssh -o ConnectTimeout=30 <vm>.exe.xyz \
-  "curl -s https://reflection.int.exe.xyz/integrations | jq -r '.integrations[].name' | grep -qx tailscale-api \
-     && echo 'tailscale-api: attached' \
-     || echo 'tailscale-api: MISSING -- VM was not created with --tag=iv'"
+  "curl -s https://reflection.int.exe.xyz/integrations | jq -r '.integrations[].name' | grep -qx api-tailscale \
+     && echo 'api-tailscale: attached' \
+     || echo 'api-tailscale: MISSING -- run: ssh exe.dev integrations attach api-tailscale vm:<vm>'"
 ```
 
-If it is missing, attach it before going further (`ssh exe.dev tag <vm> iv`, or
-`ssh exe.dev integrations attach tailscale-api vm:<vm>`).
+If it is missing, attach it before going further:
 
-This is not hypothetical: `iv-foundry-stage2` sits on the tailnet with **no** `iv`
-tag and **no** `tailscale-api` integration, so it joined by a path it can no
-longer reproduce and cannot rejoin if it ever drops off. Worth auditing the rest
-of the fleet the same way.
+```bash
+ssh exe.dev integrations attach api-tailscale vm:<vm>
+```
+
+Note the name. These docs said `tailscale-api` until 2026-08-19, which matches
+nothing: the check above then reports MISSING on a VM that is correctly
+configured, which is exactly what happened on `iv-provision`. Always list the
+names rather than grepping for one you assume.
+
+This is not hypothetical: `iv-foundry-stage2` sits on the tailnet with **no**
+`api-tailscale` integration, so it joined by a path it can no longer reproduce and
+cannot rejoin if it drops off. `api-tailscale` was attached to nine VMs as of
+2026-08-19 — audit the rest of the fleet the same way.
 
 ## Prerequisites
 
-- The VM must be created with `--tag=iv` so the `tailscale-api` integration is attached.
+- The `api-tailscale` integration must be attached to the VM:
+  `ssh exe.dev integrations attach api-tailscale vm:<vm>`. It is attached per VM,
+  not by tag — no fleet VM carries an `iv` tag, despite what these docs used to say.
 - `tailscale` itself is installed by `provision-iv.sh` (since 2026-08-18), which
   also enables `tailscaled`. On a VM that has not been provisioned yet, install
   it first — the `exeslim-dev` base does not carry it, and neither did stock

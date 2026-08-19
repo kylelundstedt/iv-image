@@ -28,8 +28,9 @@ VMs are created from the IV base image, then provisioned by running
 # 1. Create a VM from the IV dev base (exeslim-dev: slim, keeps Shelley).
 #    Use the immutable build ID for a fleet VM (see "Picking a tag" below).
 #    https://github.com/kylelundstedt/exeslim/pkgs/container/exeslim-dev
-ssh exe.dev new --name=<vm> --tag=iv \
+ssh exe.dev new --name=<vm> \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
+ssh exe.dev integrations attach api-tailscale vm:<vm>   # needed to join the tailnet
 
 # 2. Clone at a pinned tag/sha and provision. This repo is public: no
 #    integration, no credential, no proxy host.

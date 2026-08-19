@@ -41,11 +41,12 @@ batteries-included box that is not part of the IV fleet.
 
 ```bash
 # Use the immutable <date>.<run>.<attempt> build ID, from the package page.
-ssh exe.dev new --name=<vm> --tag=iv \
+ssh exe.dev new --name=<vm> \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
-```
 
-`--tag=iv` is what attaches the `tailscale-api` integration that step 2 needs.
+# Step 2 needs this; it is attached per VM, not by tag.
+ssh exe.dev integrations attach api-tailscale vm:<vm>
+```
 
 ## 2. Join the tailnet (on demand)
 

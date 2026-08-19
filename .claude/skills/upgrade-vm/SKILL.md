@@ -158,7 +158,7 @@ this path is to land on a *known* base, and exe.dev caches mutable tags for up t
 24 h (`:<date>` and `:<sha>` included — only `latest`/`main`/`master` are 1 h).
 
 ```bash
-ssh -o ConnectTimeout=30 exe.dev new --name=<vm> --tag=iv \
+ssh -o ConnectTimeout=30 exe.dev new --name=<vm> \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
 ```
 

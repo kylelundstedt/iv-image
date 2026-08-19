@@ -10,8 +10,9 @@ VMs are created from the IV dev base image, then provisioned by running
 ```bash
 # 1. Create a VM from the IV dev base. Pin the immutable build ID, never
 #    the immutable build ID rather than a mutable tag.
-ssh exe.dev new --name=<vm> --tag=iv \
+ssh exe.dev new --name=<vm> \
   --image=ghcr.io/kylelundstedt/exeslim-dev:<date>.<run>.<attempt>
+ssh exe.dev integrations attach api-tailscale vm:<vm>
 
 # 2. Clone at a pinned tag/sha and provision. This repo is public: no
 #    integration, no credential, no proxy host.
@@ -32,9 +33,9 @@ The image does **not** auto-join the tailnet. A fresh VM is reachable only over
 the exe.dev edge (`ssh <vm>.exe.xyz`). To put it on IV's tailnet, run the
 `join-tailnet` agent skill (or the equivalent commands by hand) — it SSHes in
 over `*.exe.xyz` and runs `tailscale up` with a one-use key minted through the
-`tailscale-api` proxy. After it joins, use `ssh <vm>` (Tailscale) for the rest.
+`api-tailscale` proxy. After it joins, use `ssh <vm>` (Tailscale) for the rest.
 
-Pass `--tag=iv` at creation so the `tailscale-api` integration is attached;
+Attach the `api-tailscale` integration to the VM (per VM, not by tag);
 the join step needs it to mint the key. See `tailnet.md` for the full flow.
 
 ## Upgrading to a new revision

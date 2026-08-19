@@ -28,7 +28,7 @@ If `iv-registry` is destroyed, recreate it like any other IV VM (see
 `bootstrap.md`) and provision this repo as its doc site:
 
 ```bash
-ssh exe.dev new --name=iv-registry --tag=iv
+ssh exe.dev new --name=iv-registry
 ssh iv-registry.exe.xyz "git clone https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
   && ~/iv-provision/provision-iv.sh \
   && provision-docsite ~/iv-provision"
