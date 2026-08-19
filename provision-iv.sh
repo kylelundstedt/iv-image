@@ -309,9 +309,19 @@ install_shelley() {
     #
     # Ask the process, do not infer: a drop-in on disk says nothing about the
     # environment of a process that started before it was written.
+    # Ask systemd for the service's MainPID. NOT `pgrep -x shelley | head -1`:
+    # shelley.service sets KillMode=process, so a restart kills only the main
+    # process and its terminal helpers survive -- and those helpers are also named
+    # "shelley". They predate the drop-in, so they never carry
+    # SHELLEY_SKIP_VERSION_CHECK, and being older they sort first by PID. Reading
+    # their environ made this check report "not in effect" on every run forever,
+    # turning the unconditional restart this was meant to remove into a permanent
+    # one. Observed on iv-provision 2026-08-19, where the surviving helper's
+    # environ showed SHELLEY_CONVERSATION_ID/SHELLEY_TERMINAL_ID -- the giveaway
+    # that it was a child session, not the server.
     local shelley_pid running_env=""
-    shelley_pid=$(pgrep -x shelley | head -1 || true)
-    if [[ -n $shelley_pid && -r /proc/$shelley_pid/environ ]]; then
+    shelley_pid=$(systemctl show shelley.service -p MainPID --value 2>/dev/null || true)
+    if [[ -n $shelley_pid && $shelley_pid != 0 && -r /proc/$shelley_pid/environ ]]; then
       running_env=$(tr '\0' '\n' < "/proc/$shelley_pid/environ" 2>/dev/null \
         | grep -c '^SHELLEY_SKIP_VERSION_CHECK=true$' || true)
     fi
@@ -359,8 +369,18 @@ install_shelley() {
   # stopped/checkpointed database.
   sudo systemctl stop shelley.socket 2>/dev/null || true
   sudo systemctl stop shelley.service 2>/dev/null || true
+  # Wait on the SERVICE, not on any process named "shelley". KillMode=process
+  # leaves terminal helpers running after a stop, and they are named "shelley"
+  # too -- so a `pgrep -x shelley` loop never breaks and burns its full timeout on
+  # every binary swap while the thing it is waiting for has already exited.
   for _ in $(seq 1 20); do
-    pgrep -x shelley >/dev/null 2>&1 || break
+    sudo systemctl is-active --quiet shelley.service || break
+    sleep 0.5
+  done
+  local main_pid
+  main_pid=$(systemctl show shelley.service -p MainPID --value 2>/dev/null || echo 0)
+  for _ in $(seq 1 20); do
+    [[ -z $main_pid || $main_pid == 0 || ! -d /proc/$main_pid ]] && break
     sleep 0.5
   done
   if [[ -f $HOME/.config/shelley/shelley.db ]]; then

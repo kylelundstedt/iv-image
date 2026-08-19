@@ -98,6 +98,21 @@ grep -q 'MERGE the team Claude settings' "$script" || {
 }
 grep -q 'SHELLEY_SKIP_VERSION_CHECK=true' "$script"
 
+# The restart decision must read systemd's MainPID, not `pgrep`. shelley.service
+# uses KillMode=process, so terminal helpers -- also named "shelley" -- survive a
+# restart, predate the drop-in and sort first by PID, which made the check report
+# "not in effect" on every run and restart Shelley forever.
+grep -q "systemctl show shelley.service -p MainPID" "$script" || {
+  echo "restart check must use systemd MainPID, not pgrep" >&2
+  exit 1
+}
+# Nothing may wait on or inspect "a process named shelley": KillMode=process means
+# terminal helpers outlive the service and share the name.
+if grep -vE '^\s*#' "$script" | grep -q 'pgrep -x shelley'; then
+  echo "provisioner still matches processes by name; use systemd MainPID/is-active" >&2
+  exit 1
+fi
+
 # The socket must be stopped BEFORE the service. shelley.service is BindsTo= the
 # socket, so stopping only the service leaves the socket able to activate the old
 # binary, which then self-upgrades over the pinned install (observed on kgl-songs
