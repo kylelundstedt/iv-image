@@ -281,6 +281,39 @@ credential permits. The skill only mints an auth key, but if you need hard
 server-side enforcement of "create exactly one key for this VM," put a small
 broker in front instead of attaching the raw proxy.
 
+### What a `tailnet`-tagged VM can actually do (measured 2026-08-19)
+
+Worth stating concretely, because "no credentials on the VM" is true and easy to
+misread as "no authority from the VM". Both hold at once: the secret stays at the
+edge, and the VM wields what it protects.
+
+From a tagged VM, with nothing on disk and no login:
+
+```bash
+TOKEN=$(curl -sS -X POST -d grant_type=client_credentials \
+  https://api-tailscale.int.exe.xyz/api/v2/oauth/token | jq -r .access_token)
+# -> a 1-hour Tailscale API bearer token
+```
+
+That token is **tailnet-wide, not VM-scoped**. Measured: it enumerated all 17
+nodes on the tailnet, including workstations and phones, not merely the VM that
+asked. Anything the backing OAuth client may do, the VM may do — minting
+preauthorized `tag:dev` keys, and deleting nodes. `provision-iv.sh` relies on
+that delete capability deliberately, to clear a stale node before rejoining under
+the same hostname.
+
+So the honest summary of the tag is: **a tagged VM can join or rejoin the tailnet
+unattended, and could also remove other nodes from it.** The exe.dev proxy
+prevents credential *theft* — the OAuth secret never reaches the VM, cannot be
+exfiltrated from it, and rotates centrally — but it does not scope *authority*.
+A compromised tagged VM is a compromised tailnet-admin capability for as long as
+it is compromised, though not one that outlives the tag being removed.
+
+That is the trade the tag makes, and why it is a tag of its own rather than a
+capability folded into `tag:iv`: applying it should feel like a decision. The
+broker above is the fix if the authority itself needs bounding rather than merely
+the credential; it is orthogonal to how the integration is attached.
+
 ## Upgrading a VM to a new revision
 
 The normal upgrade is an in-place re-provision: check out a newer `iv-provision`
