@@ -182,10 +182,26 @@ What remains:
       `reflection.int.exe.xyz` reports a VM's own tags and its own integrations,
       never the attachment *rules*, so from a VM there is no way to tell whether
       an integration arrived by `vm:`, `tag:`, or `auto:all` — effects are
-      visible, rules are not. `ssh exe.dev integrations` is the authority, and
-      the authoring host cannot reach it (no exe.dev SSH key on a VM). Until
-      that gap is closed, any claim in these docs about *how* something is
-      attached needs an owner-side check before it is written down.
+      visible, rules are not. `ssh exe.dev integrations` is the authority.
+
+      **The gap is closable, and "a VM cannot reach the control plane" was too
+      strong a claim.** What a VM lacks is an *SSH key* in the exe.dev account —
+      but exe.dev also exposes the same CLI over HTTPS at `POST https://exe.dev/exec`,
+      authenticated by a bearer token, and that endpoint is reachable from here
+      (it answers 401, not a connection failure). A scoped, expiring token would
+      let the authoring host verify attachment rules for itself instead of
+      routing every such question through the owner.
+
+      Worth doing deliberately, because the token is a real credential on a VM —
+      exactly what the integration model exists to avoid. Mitigations the API
+      already supports: `cmds` restricts a token to named commands, so a
+      read-only token (`["integrations","ls","tags"]`, no `new`/`rm`/`attach`)
+      cannot change anything; `exp` bounds replay. Generated with
+      `ssh exe.dev ssh-key generate-api-key --exp=30d` plus a `cmds` restriction,
+      stored `0600` outside the repo.
+
+      Until then, any claim in these docs about *how* something is attached needs
+      an owner-side check before it is written down.
 - [ ] Re-attaching `repo-iv-provision-rw` to a second VM should be an event, not
       a state. On 2026-08-19 it was attached to `iv-foundry-stage2` as an
       expedient, a dozen commits were pushed from there, and it was detached the
