@@ -49,6 +49,24 @@ The `upgrade-vm` skill also documents the exceptional destroy/recreate path for
 cases that genuinely require a fresh disk or newer exe.dev-managed base. That
 path wipes the VM; see `tailnet.md`.
 
+### Documentation ships with the tag
+
+A VM's `~/iv-provision` sits **detached at a release tag**, and the `*.md` /
+`*.qmd` files are part of that checkout. So the docs a VM shows — to a person or
+to an agent reading `README.md` on the box — are the docs as of its tag, not as
+of `main`.
+
+That makes a documentation correction a *release*, not a merge. When `main`
+changes a rule the fleet is meant to follow, cut a patch tag; otherwise every VM
+keeps presenting the superseded text as current, and confidently. This is not
+hypothetical: the "Authoring boundary" section was corrected on 2026-08-19 and
+merged after `3.0.9` was tagged, leaving all eleven checkouts advertising the
+rule that had just been reversed. `3.0.10` exists to ship that text.
+
+Doc-only patch releases are cheap and expected — `2.5.1` and `3.0.10` are both
+of that kind. Re-provisioning to pick one up is the same ~23-second in-place
+re-run as any other upgrade, since nothing else in the recipe changed.
+
 ## Agent config (installed by provision-iv.sh)
 
 Every provisioned VM gets team agent defaults — no manual setup required:
