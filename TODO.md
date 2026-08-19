@@ -57,6 +57,41 @@ What remains:
       as the newer stable. Evidence in the plugin repo
       (`QUALIFICATION-v0.1.3-cli0.10.1.md`). Fleet re-provisioned to 3.0.15;
       every VM now runs Entire CLI 0.10.1 with plugin 0.1.3.
+- [ ] Evaluate the `refs` checkpoint backend (do **not** flip yet). CLI 0.10.1's
+      `entire enable` recommends `--checkpoint-backend refs` (one git ref per
+      checkpoint) over the `branch` backend the fleet uses (a shared
+      `entire/checkpoints/v1` orphan branch). Bench-measured on
+      `iv-entire-agent-shelley` 2026-08-19 against plugin 0.1.3: `refs` produces
+      `"type":"git-refs"`, seeds no orphan branch at enable, and the plugin
+      captures correctly under it — commit trailer added, transcript captured,
+      metadata byte-identical (`full.jsonl`/`metadata.json`/`prompt.txt`/
+      `transcript.jsonl`). Storage moves to `refs/entire/checkpoints/<shard>/<id>`,
+      **outside** `refs/heads/*`; propagation is the backend-aware `entire hooks
+      git pre-push` hook, not a push refspec. So the plugin side is cheap. The
+      cost is elsewhere, and is why this is not a flag flip:
+      1. **Qualify `refs` against 0.1.3** — the live suite
+         (`test-shelley-live.sh`) hard-codes `refs/heads/entire/checkpoints/v1`
+         in four places (settings, the `--checkpoint-backend` flag, and the
+         verification block L204-208), so it currently *cannot* qualify `refs`;
+         it needs a `refs`-aware variant. ~an afternoon.
+      2. **Confirm AgentsView reads `refs/entire/*`** — the real gate, and the
+         one thing the bench cannot answer. ADR 0010 makes AgentsView the
+         backfill/reconciliation path and it is built against the `v1` branch
+         layout; if it does not read the new refs, switching **silently breaks
+         reconciliation** (the exact quiet-provenance-loss failure this section
+         exists to prevent). Verify against the running AgentsView. If no, stop.
+      3. **Decide existing history** — a switch does not migrate it. `iv-docs`
+         already has 16 checkpoint commits on `origin/entire/checkpoints/v1`;
+         new checkpoints would go to `refs/entire/*`, stranding the old ones
+         unless a dual-read or a one-time migration copies them. Per enrolled
+         repo (`iv-docs`, `fannie-sflpd*`, `ave-adapters`, ...).
+      4. **Flip fleet-wide as one coordinated change** — `settings.json` is
+         committed and inherited by all worktrees/clones, so mixing backends
+         across enrolled repos fragments how checkpoints are read. All-or-nothing.
+      Trigger to actually do it: upstream deprecating `branch`, or hitting the
+      push-contention `refs` was built for (we are not — low concurrency per
+      repo). Until then `branch` is qualified, fleet-consistent, and carrying
+      real history.
 
 ## AgentsView
 
