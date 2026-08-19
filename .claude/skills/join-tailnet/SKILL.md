@@ -82,8 +82,11 @@ misread from a screenshot; it is attached per VM, transiently.)
 ## Prerequisites
 
 - The `api-tailscale` integration must be attached to the VM:
-  `ssh exe.dev integrations attach api-tailscale vm:<vm>`. It is attached per VM,
-  not by tag — no fleet VM carries an `iv` tag, despite what these docs used to say.
+  `ssh exe.dev integrations attach api-tailscale vm:<vm>`. It is attached per VM
+  today, not by tag. (An earlier note here said "no fleet VM carries an `iv` tag";
+  that was wrong — `iv-provision` does. `iv` is an **exe.dev** tag and never
+  appears in `tailscale status`, which is what made it look absent. See
+  `tailnet.md` → "Two tag systems, one word".)
 - `tailscale` itself is installed by `provision-iv.sh` (since 2026-08-18), which
   also enables `tailscaled`. On a VM that has not been provisioned yet, install
   it first — the `exeslim-dev` base does not carry it, and neither did stock
