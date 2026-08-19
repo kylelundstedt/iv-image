@@ -142,6 +142,65 @@ grep -q 'sqlite3.connect(src)' "$script"
 grep -q 'unsafe prior skill name' "$script"
 grep -q 'ln -sT' "$script"
 
+# The floor-pinned agents must be probed across PATH, not at one absolute path.
+# Probing only ~/.local/bin reported "missing" on the pre-exeslim `exe` base,
+# which ships them in /usr/local/bin -- so the floor never applied and
+# provisioning DOWNGRADED a working agent (kgl-songs 2026-08-19: Claude Code
+# 2.1.222 -> the 2.1.220 pin, Codex 0.146.1 -> 0.146.0).
+for floor in claude_code codex; do
+  grep -q "^${floor}_version_highest()" "$script" || {
+    echo "floor-pinned tool must probe every copy on PATH: $floor" >&2
+    exit 1
+  }
+done
+grep -q 'version_at_least "$best" "$CLAUDE_CODE_VERSION"' "$script" || {
+  echo "Claude Code floor must compare the highest version on PATH" >&2
+  exit 1
+}
+grep -q 'version_at_least "$best" "$CODEX_VERSION"' "$script" || {
+  echo "Codex floor must compare the highest version on PATH" >&2
+  exit 1
+}
+
+# Behavioural check on the resolution helpers, since the grep above only proves
+# the shape. Two copies of a fake tool: the newer one NOT in ~/.local/bin.
+probe_dir=$(mktemp -d)
+trap 'rm -rf "$probe_dir"' EXIT
+mkdir -p "$probe_dir/home/.local/bin" "$probe_dir/usr/bin"
+printf '#!/bin/sh\necho "2.1.220 (Claude Code)"\n' > "$probe_dir/home/.local/bin/claude"
+printf '#!/bin/sh\necho "2.1.222 (Claude Code)"\n' > "$probe_dir/usr/bin/claude"
+chmod +x "$probe_dir/home/.local/bin/claude" "$probe_dir/usr/bin/claude"
+probe_out=$(
+  HOME="$probe_dir/home" PATH="$probe_dir/usr/bin:/usr/bin:/bin" bash -c '
+    eval "$(sed -n "/^version_at_least()/,/^}/p" "$0")"
+    eval "$(sed -n "/^tool_paths()/,/^codex_version_highest()/p" "$0")"
+    printf "%s %s" "$(claude_code_version)" "$(claude_code_version_highest)"
+  ' "$script"
+)
+[[ $probe_out == "2.1.220 2.1.222" ]] || {
+  echo "PATH-wide version probe wrong: expected '2.1.220 2.1.222', got '$probe_out'" >&2
+  exit 1
+}
+
+# The ssh block must key on tailnet membership, not on a hostname prefix. Fleet
+# names do not share one -- kgl-songs, kgl-thoughts and telnyx-vm are tailnet
+# nodes that `Host iv-* *.ts.net` never matched, so VM-to-VM ssh to them failed
+# host-key verification (2026-08-19).
+grep -q 'Match exec "tailscale ip -4 %h' "$script" || {
+  echo "ssh config must match tailnet membership via tailscale ip, not a name prefix" >&2
+  exit 1
+}
+if grep -q '^Host iv-\* \*\.ts\.net$' "$script"; then
+  echo "ssh config still keys on the iv-* hostname prefix" >&2
+  exit 1
+fi
+# ...and it must be REWRITTEN on every provision, not appended once: the
+# append-only form made a wrong stanza permanent on already-provisioned VMs.
+grep -q 'updated the iv-provision ssh block' "$script" || {
+  echo "ssh block must be reconciled on re-provision, not only created once" >&2
+  exit 1
+}
+
 source_wrapper="$repo/bin/agentsview-source-daemon"
 unit="$repo/systemd/agentsview-source.service"
 bash -n "$source_wrapper"

@@ -81,3 +81,15 @@ What remains:
 
 - [ ] `provision-docsite`: separate the rendered build directory from the
       nginx docroot so a preview render cannot modify the live site.
+- [ ] Two VMs still run a pre-exeslim exe.dev base: `kgl-songs`
+      (`exe`/`main`, 2026-08-05) and `kgl-thoughts` (`exe`/`nightly`,
+      2026-06-16). That is what surfaced the 3.0.9 probe bug — those bases put
+      `claude`/`codex`/`uv` in `/usr/local/bin`, which no exeslim VM does. The
+      duplicates left behind on `kgl-songs` (~290 MB, now shadowed by
+      `~/.local/bin`) are still on disk; decide whether to remove them or fold
+      it into the recreate-cadence decision above.
+- [ ] `iv-entire-agent-shelley` cannot be reached over the tailnet: it carries
+      only `tag:iv-aperture-pilot`, not `tag:dev`, so the SSH ACL does not
+      cover it, and the `*.exe.xyz` fallback needs an exe.dev key no VM has. It
+      is therefore unreachable from the authoring host and was skipped in the
+      3.0.8/3.0.9 refresh. Fix the ACL or the tag.

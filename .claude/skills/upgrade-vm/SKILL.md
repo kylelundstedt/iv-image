@@ -17,15 +17,32 @@ pick up.
 
 ## Path A — Re-provision in place (default)
 
-The user provides the **VM name** and optionally a **target tag/sha** of the
-`iv-provision` repo (defaults to the latest on the default branch).
+The user provides the **VM name** and a **target release tag** of the
+`iv-provision` repo.
 
-**One SSH command at a time** — never parallel SSH to `*.exe.xyz` or `exe.dev`.
+**One SSH command at a time** — never parallel SSH.
+
+### Reach the VM over the tailnet: `ssh <vm>`, not `<vm>.exe.xyz`
+
+A fleet VM is a tailnet node, so Tailscale SSH reaches it directly and keylessly.
+The exe.dev edge (`ssh <vm>.exe.xyz`) is the **bootstrap** path for a VM that is
+not on the tailnet yet — it needs an exe.dev SSH key, which a VM does not have,
+so from another VM it fails outright. Use it only in Path B before the join.
+
+### Always name an explicit tag; never `--detach main`
+
+`git checkout --detach main` resolves the **local** `main`, which on a fleet VM is
+whatever was fetched whenever it was last provisioned — often months stale. It
+succeeds, prints nothing alarming, and provisions an older recipe. Name the tag.
+
+Since 3.0.8 the provisioner prints the revision it is provisioning from and warns
+when the checkout is behind its upstream. **Read that line on every run**; it is
+the only thing standing between a typo and a silent downgrade.
 
 ```bash
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/iv-provision \
+ssh <vm> "cd ~/iv-provision \
   && git fetch --tags --quiet \
-  && git checkout --detach <tag-or-sha> \
+  && git checkout --detach <tag> \
   && ~/iv-provision/provision-iv.sh \
   && ~/iv-provision/tests/smoke-provision.sh ~/iv-provision"
 ```
@@ -41,7 +58,7 @@ moving parts and cannot leave behind a half-migrated remote, a stale detached
 HEAD, or local edits nobody meant to keep.
 
 ```bash
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "rm -rf ~/iv-image \
+ssh <vm> "rm -rf ~/iv-image \
   && git clone --quiet https://github.com/kylelundstedt/iv-provision.git ~/iv-provision \
   && git -C ~/iv-provision checkout --detach <tag> \
   && ~/iv-provision/provision-iv.sh \
@@ -60,8 +77,36 @@ This re-pins tools and re-installs the vendored skills + agent config, and
 rewrites `~/iv-provision.lock`. Verify:
 
 ```bash
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "cat ~/iv-provision.lock"
+ssh <vm> "cat ~/iv-provision.lock"
 ```
+
+### Verify the Shelley pin twice, minutes apart
+
+A clean provision log is **not** proof. kgl-songs reported 0.959 installed on
+2026-08-17 and was serving the older build again sixty seconds later, via the
+socket-activation race (fixed in 3.0.1). Compare the binary against what is
+actually answering the socket, immediately and again a few minutes later:
+
+```bash
+ssh <vm> "shelley version | jq -r .version; \
+  curl -fsS -H 'X-Exedev-Userid: probe' \
+    --unix-socket ~/.config/shelley/shelley.sock \
+    http://localhost/version | jq -r .version"
+```
+
+Both must equal the pin. Expect **no Shelley restart** on a VM already at the pin
+(`pin and self-update override already in effect; not restarting`) and **no Claude
+Code downgrade** — `claude` and `codex` are floors, not exact pins. If either
+happens, stop and investigate rather than continuing through the fleet.
+
+Also check `~/iv-provision.lock` after each VM: `python3_version`,
+`tailscale_version`, `entire_version`, `entire_plugin_version` and
+`skills_count` should all be populated.
+
+### Do production VMs last
+
+VMs running services others depend on (kgl-songs, telnyx-vm) go **last and
+individually**, and their services get confirmed still serving afterwards.
 
 If `~/iv-provision` doesn't exist yet (older VM), clone it first — see `bootstrap.md`.
 
@@ -81,7 +126,7 @@ Still worth running if you want the overlay's own content refreshed (its
 `~/dotfiles` checkout pulled, new personal skills installed):
 
 ```bash
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "cd ~/dotfiles && git pull --ff-only && ./install.sh"
+ssh <vm> "cd ~/dotfiles && git pull --ff-only && ./install.sh"
 ```
 
 ## Path B — Full destroy + recreate (only when required)
@@ -189,11 +234,18 @@ work repo + `provision-docsite`).
 
 ```bash
 tailscale status | grep <vm>
-ssh -o ConnectTimeout=30 <vm>.exe.xyz "cat ~/iv-provision.lock"
+ssh <vm> "cat ~/iv-provision.lock"
 ```
 
 ## SSH discipline
 
-- **One SSH attempt at a time.** Never launch parallel SSH to `*.exe.xyz` or `exe.dev`.
+- **One SSH attempt at a time.** Never launch parallel SSH.
 - Wait for each command to complete before starting the next.
 - If SSH fails, wait 30-60s before one more attempt.
+- Use `ssh <vm>` (Tailscale SSH) for anything on the tailnet. `<vm>.exe.xyz` is
+  the bootstrap path only, and does not work from another VM.
+- Since 3.0.9 the provisioner writes an ssh config block matching on tailnet
+  *membership* (`tailscale ip -4 %h`) rather than on an `iv-*` name prefix, so
+  `ssh kgl-songs` and `ssh telnyx-vm` work without flags. On a VM last
+  provisioned before 3.0.9, pass
+  `-o StrictHostKeyChecking=accept-new -o User=exedev` until it is re-provisioned.
