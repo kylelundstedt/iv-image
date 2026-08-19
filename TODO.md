@@ -39,9 +39,11 @@ Dotfiles-side edits. `repo-dotfiles` is attached to `vm:iv-provision` with
       (`maint/.local/bin/entire-push-check`, run by the launchd plist). Deduping
       means repointing that checker at a single source first, then dropping the
       copy; it is its own change, not a delete.
-- [ ] **Copy over the load-bearing rationale** now cross-linked into
-      `dotfiles/agent_docs/` (`vm-disk-weight.md`, `exe-dev-remediation.md`
-      Track 2) so `exeslim/FORK.md` and this repo stop dangling.
+- [x] ~~**Copy over the load-bearing rationale** now cross-linked into
+      `dotfiles/agent_docs/`.~~ Already present: `vm-disk-weight.md` and
+      `exe-dev-remediation.md` both exist in dotfiles `agent_docs/` (verified
+      2026-08-19), so the `exeslim/FORK.md` and iv-provision README references
+      resolve rather than dangle. Nothing to copy.
 
 ## Own the Entire ACR capture path
 
@@ -182,8 +184,16 @@ What remains:
 
 ## Other
 
-- [ ] `provision-docsite`: separate the rendered build directory from the
-      nginx docroot so a preview render cannot modify the live site.
+- [x] ~~`provision-docsite`: separate the rendered build directory from the
+      nginx docroot so a preview render cannot modify the live site.~~ Done: it
+      renders to the build tree (`_site`, which `render-md-site` wipes with
+      `shutil.rmtree` each run) and only on a successful render publishes to a
+      timestamped release under `<repo>/.docsite/releases/`, flipping an atomic
+      `current` symlink that nginx's docroot follows. A failed or in-flight
+      render never touches the live site; the prune keeps the last 3 releases
+      and refuses to delete the one `current` points at. Verified end-to-end on
+      the authoring host (200 across a re-render; a no-`index.html` render keeps
+      the previous release live).
 - [ ] The three pre-exeslim `exe`-base VMs still carry duplicate agent binaries
       in `/usr/local/bin` (`claude`, `codex`, `uv`), shadowed by the copies in
       `~/.local/bin` that win PATH. Since 3.0.9 the provisioner *reads* those

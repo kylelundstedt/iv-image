@@ -22,3 +22,5 @@ skills/mviz/*.png
 **/*.py[cod]
 **/*.quarto_ipynb
 /_site/
+# provision-docsite's served releases + current symlink (per-VM state, like _site)
+/.docsite/
