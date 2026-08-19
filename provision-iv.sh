@@ -296,9 +296,31 @@ install_shelley() {
     printf '%s\n' '[Service]' 'Environment=SHELLEY_SKIP_VERSION_CHECK=true' \
       | sudo tee /etc/systemd/system/shelley.service.d/10-iv-managed.conf >/dev/null
     sudo systemctl daemon-reload
-    # A newly written drop-in does not affect the running process until restart.
-    # Restart even for matching bytes so unmanaged self-upgrade is actually off.
-    sudo systemctl restart shelley.service
+
+    # Restart ONLY if the drop-in is not already in effect in the running process.
+    #
+    # A restart kills every in-flight conversation on the VM, so doing it
+    # unconditionally means a fleet refresh interrupts ten VMs for no reason -- and
+    # kills the very conversation driving the refresh, if it is being driven from
+    # Shelley. This block previously restarted even when the binary and the drop-in
+    # were both already correct, reasoning that a newly written drop-in does not
+    # reach a running process. True, but only relevant when it is actually missing
+    # from that process.
+    #
+    # Ask the process, do not infer: a drop-in on disk says nothing about the
+    # environment of a process that started before it was written.
+    local shelley_pid running_env=""
+    shelley_pid=$(pgrep -x shelley | head -1 || true)
+    if [[ -n $shelley_pid && -r /proc/$shelley_pid/environ ]]; then
+      running_env=$(tr '\0' '\n' < "/proc/$shelley_pid/environ" 2>/dev/null \
+        | grep -c '^SHELLEY_SKIP_VERSION_CHECK=true$' || true)
+    fi
+    if [[ ${running_env:-0} -ge 1 ]]; then
+      echo "  pin and self-update override already in effect; not restarting"
+    else
+      echo "  self-update override not active in the running process; restarting"
+      sudo systemctl restart shelley.service
+    fi
     return
   fi
 
