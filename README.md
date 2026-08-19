@@ -177,6 +177,45 @@ seconds. If an exception is genuinely needed, attach the writer deliberately,
 land the change by PR, and **detach it again** — the exception should be an
 event, not a new steady state.
 
+### Opening a PR from a VM
+
+The repo integrations proxy git over `https://github.int.exe.xyz/...`, and the
+same host serves the **GitHub API** under `/api/v3`. So a PR can be opened from
+the VM without `gh` and without a token:
+
+```bash
+git push https://github.int.exe.xyz/kylelundstedt/<repo>.git <branch>
+
+curl -fsS -X POST https://github.int.exe.xyz/api/v3/repos/kylelundstedt/<repo>/pulls \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"...","head":"<branch>","base":"main"}'
+```
+
+`api.github.com` is *not* the endpoint to use here — unauthenticated it can read
+public state but cannot create anything, which reads as "the API does not work
+from a VM" if that is the only thing tried.
+
+**On a fork, always pass `base`, and check where the PR landed.** GitHub's
+web "compare" UI defaults the base to the **upstream parent**, not to your own
+`main`. `kylelundstedt/exeslim` is a fork of `ryanlewis/exeslim`, so visiting the
+`pull/new/<branch>` link after a push proposes the branch *to upstream* — which
+is how a one-file, +14-line fork-only change became a 10-commit, +319-line PR
+against someone else's repository (`ryanlewis/exeslim#13`, 2026-08-19). Every
+commit on our `main` that upstream lacks gets swept in, because the diff is
+computed against upstream's `main`, and a `FORK.md` edit is by construction
+never a merge candidate upstream.
+
+The API form above is not subject to that default: `base` is explicit, and the
+URL names the repository the PR is opened *on*. Verify after creating it:
+
+```bash
+curl -fsS https://api.github.com/repos/kylelundstedt/<repo>/pulls/<n> \
+  | jq '{base: .base.repo.full_name, commits, changed_files}'
+```
+
+If `base.repo.full_name` is not the repo you meant, close it and reopen with an
+explicit base rather than editing it.
+
 ### What else holds
 
 No VM worktree is authoritative, and a checkout on a fleet VM is expected to sit
