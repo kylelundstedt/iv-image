@@ -171,9 +171,31 @@ version_at_least() {
   [[ $(printf '%s\n%s\n' "$have" "$want" | sort -V | head -1) == "$want" ]]
 }
 
+keeps_quarto() {
+  # A VM opts out of quarto removal when it still renders with quarto. Two
+  # signals, either sufficient:
+  #   * an explicit fleet marker, ~/.config/iv-provision/keep-quarto, or
+  #   * any repo in ~ carrying the per-repo `.render-with-quarto` marker, the
+  #     convention lundstedt.us uses to stay on quarto for a Pandoc fenced div
+  #     that the lightweight (apex) renderer cannot produce.
+  [[ -f $HOME/.config/iv-provision/keep-quarto ]] && return 0
+  local m
+  while IFS= read -r m; do
+    [[ -n $m ]] && return 0
+  done < <(find "$HOME" -maxdepth 3 -name '.render-with-quarto' -print 2>/dev/null)
+  return 1
+}
+
 remove_legacy_quarto() {
   # Reclaim installations created by older iv-provision releases. Do not touch a
   # user-managed quarto binary unless it resolves into the old /opt/quarto tree.
+  # A VM that still renders with quarto (see keeps_quarto) is left untouched --
+  # removing its /usr/local/bin/quarto symlink strands the binary off PATH and
+  # breaks the site's own `quarto render` publish path.
+  if keeps_quarto; then
+    echo "  quarto retained (.render-with-quarto or keep-quarto marker present)"
+    return 0
+  fi
   local target dir
   if [[ -L /usr/local/bin/quarto ]]; then
     target=$(readlink -f /usr/local/bin/quarto || true)
