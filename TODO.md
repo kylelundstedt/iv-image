@@ -169,21 +169,19 @@ What remains:
       unpatched packages. What it misses is *newly added* packages (e.g.
       `nginx-light`, `openssh-client`) and image-level changes to the boot path.
 
-      Fleet state 2026-08-19, mid-migration off the pre-exeslim `exeuntu` base:
+      Fleet state 2026-08-20 -- the pre-exeslim `exeuntu` base is fully retired:
 
       | Base | VMs |
       | ---- | --- |
-      | `exeslim-dev` `2026-08-18.11.1` | `iv-provision`, `kgl-songs` (migrated), `telnyx-vm` (migrated) |
+      | `exeslim-dev` `2026-08-18.11.1` | `iv-provision`, `kgl-songs`, `telnyx-vm`, `kgl-thoughts` (all migrated) |
       | `exeslim-dev` `2026-07-29.6.1` | `iv-docs`, `iv-ave-adapters`, `iv-gitlake`, `iv-gitlake-examples`, `iv-home`, `iv-foundry-stage2` |
-      | pre-exeslim `exeuntu` | `kgl-thoughts` (blog, `lundstedt.us`) |
 
-      Done 2026-08-19: `kgl-apex` dropped (only ever used to open a PR);
-      `kgl-songs` and `telnyx-vm` recreated onto `exeslim-dev`. Remaining:
-      `kgl-thoughts` (the blog, with custom domains). The six
-      `exeslim-dev 2026-07-29.6.1` VMs are only one image behind and low-risk;
-      recreate opportunistically.
+      Done 2026-08-19/20: `kgl-apex` dropped (only ever used to open a PR);
+      `kgl-songs`, `telnyx-vm`, and `kgl-thoughts` recreated onto `exeslim-dev`.
+      **No exeuntu-base VMs remain.** The six `exeslim-dev 2026-07-29.6.1` VMs
+      are only one image behind and low-risk; recreate opportunistically.
 
-### Base recreate playbook (learned from the kgl-songs / telnyx-vm migrations)
+### Base recreate playbook (from the kgl-songs / telnyx-vm / kgl-thoughts migrations)
 
 exe.dev fixes the image at creation with no swap, and `cp` copies the image too,
 so a base change is **delete + `new --image=<target>` + restore**, reusing the
@@ -213,12 +211,34 @@ Telnyx webhook URL, blog DNS all key off it). What bit us, in order of surprise:
   confirm the base actually changed in `~/iv-provision.lock`. Shelley
   self-updated to 0.971 on the fresh telnyx-vm and provisioning correctly
   re-pinned it to 0.959.
+- **Custom domains do NOT survive a recreate either.** kgl-thoughts'
+  `lundstedt.us` / `www.lundstedt.us` had to be re-added with `exe.dev domain
+  add kgl-thoughts <domain>` after `new`; Cloudflare DNS must stay DNS-only
+  (grey cloud) pointing at `<name>.exe.xyz`. Same recreate-invalidates-a-held-
+  binding class as `vm:` integrations.
+- **A recreate silently drops the VM from AgentsView aggregation.** Re-provision
+  mints a *new* per-host source token, which orphans the token the klundstedt-mini
+  aggregator holds in `~/.agentsview/config.toml`; it then polls that host `401
+  Unauthorized` forever with no alert (telnyx-vm and kgl-thoughts had both gone
+  dark this way, and kgl-songs/iv-provision were never in the list at all).
+  After a recreate, copy the host's current `~/.config/agentsview/source.env`
+  token into the aggregator's config and restart it. Move the token VM->config
+  via an stdin pipe, never a shell arg -- it is a live tailnet auth token and
+  the transcript is itself an AgentsView source. Fixed 2026-08-20; all 11
+  configured hosts now poll clean.
+- **A stock nginx image needs two nudges to serve a `~`-rooted site.** The base
+  ships an enabled `default` site owning the proxy port, and `$HOME` is `0750`
+  (no world-execute) so nginx (www-data) cannot traverse to `~/www` -- every
+  path 404s. kgl-thoughts' `install-nginx.sh` now removes the default site and
+  does `chmod o+x $HOME`; a `mktemp -d` release also needed world-read perms.
 
-      The remaining `exeuntu` VM (`kgl-thoughts`) is the interesting one: that
-      base ships `claude`/`codex`/`uv` in `/usr/local/bin`, which is what
-      surfaced the 3.0.9 PATH-probe defect, and it carries the blog's custom
-      domains (`lundstedt.us`, `www.lundstedt.us`) that must be re-registered on
-      the new VM or the blog goes dark.
+      A site that renders with quarto (only `lundstedt.us`) is the one exeslim
+      exception: quarto is not on the base and not in apt, so its repo carries a
+      pinned, sha256-verified `scripts/install-quarto.sh` (the `.deb` from
+      Posit), and the committed `.render-with-quarto` marker makes
+      `remove_legacy_quarto` leave it alone (PR #28, in 3.0.16). Provision such a
+      VM at a tag >= 3.0.16 or the guard is absent and quarto's PATH symlink is
+      stripped again.
 
 ## Other
 
@@ -232,13 +252,11 @@ Telnyx webhook URL, blog DNS all key off it). What bit us, in order of surprise:
       and refuses to delete the one `current` points at. Verified end-to-end on
       the authoring host (200 across a re-render; a no-`index.html` render keeps
       the previous release live).
-- [ ] `kgl-thoughts` (the last pre-exeslim `exeuntu` VM) still carries duplicate
-      agent binaries in `/usr/local/bin` (`claude`, `codex`, `uv`), shadowed by
-      the `~/.local/bin` copies that win PATH. Since 3.0.9 the provisioner
-      *reads* those correctly so they are harmless, just wasted disk. Resolves
-      itself when `kgl-thoughts` is recreated onto exeslim-dev (which ships none
-      of them in `/usr/local/bin`) — fold into that migration rather than pruning
-      in place. `kgl-songs` and `telnyx-vm` already shed theirs by recreating.
+- [x] ~~The pre-exeslim `exeuntu` VMs carried duplicate agent binaries in
+      `/usr/local/bin` (`claude`, `codex`, `uv`), shadowed by the `~/.local/bin`
+      copies that win PATH.~~ Resolved 2026-08-20: all three (`kgl-songs`,
+      `telnyx-vm`, `kgl-thoughts`) shed them by recreating onto exeslim-dev,
+      which ships none of them in `/usr/local/bin`. No exeuntu VMs remain.
 - [x] ~~`iv-entire-agent-shelley` unreachable over the tailnet.~~ Resolved
       2026-08-19: `tag:dev` added to the node in the Tailscale console, alongside
       its existing `tag:iv-aperture-pilot`. The VM was never off the tailnet —
