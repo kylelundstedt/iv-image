@@ -169,18 +169,56 @@ What remains:
       unpatched packages. What it misses is *newly added* packages (e.g.
       `nginx-light`, `openssh-client`) and image-level changes to the boot path.
 
-      Fleet state 2026-08-19 (from `~/iv-provision.lock`):
+      Fleet state 2026-08-19, mid-migration off the pre-exeslim `exeuntu` base:
 
       | Base | VMs |
       | ---- | --- |
-      | `exeslim-dev` `2026-08-18.11.1` | `iv-provision` |
+      | `exeslim-dev` `2026-08-18.11.1` | `iv-provision`, `kgl-songs` (migrated), `telnyx-vm` (migrated) |
       | `exeslim-dev` `2026-07-29.6.1` | `iv-docs`, `iv-ave-adapters`, `iv-gitlake`, `iv-gitlake-examples`, `iv-home`, `iv-foundry-stage2` |
-      | pre-exeslim `exe` | `kgl-songs` (`main`, 2026-08-05), `kgl-thoughts` (`nightly`, 2026-06-16), `telnyx-vm` (`nightly`, 2026-07-21) |
+      | pre-exeslim `exeuntu` | `kgl-thoughts` (blog, `lundstedt.us`) |
 
-      The three `exe`-base VMs are the interesting ones: that base ships
-      `claude`/`codex`/`uv` in `/usr/local/bin`, which is what surfaced the 3.0.9
-      PATH-probe defect. They are the most likely to surface the next
-      base-dependent bug too.
+      Done 2026-08-19: `kgl-apex` dropped (only ever used to open a PR);
+      `kgl-songs` and `telnyx-vm` recreated onto `exeslim-dev`. Remaining:
+      `kgl-thoughts` (the blog, with custom domains). The six
+      `exeslim-dev 2026-07-29.6.1` VMs are only one image behind and low-risk;
+      recreate opportunistically.
+
+### Base recreate playbook (learned from the kgl-songs / telnyx-vm migrations)
+
+exe.dev fixes the image at creation with no swap, and `cp` copies the image too,
+so a base change is **delete + `new --image=<target>` + restore**, reusing the
+**same VM name** to preserve the `<name>.exe.xyz` origin (iPad IndexedDB state,
+Telnyx webhook URL, blog DNS all key off it). What bit us, in order of surprise:
+
+- **`vm:` integration attachments do NOT survive a recreate.** All three of
+  telnyx-vm's integrations (`repo-telnyx-vm-rw`, `svc-telnyx-test`,
+  `bucket-telnyx-vm`) came back detached; only the `tailnet` *tag* survived,
+  because `--tag=tailnet` was passed at `new`. **Prefer a durable tag over `vm:`
+  for anything a recreate must keep** (as `kgl-songs` already does via
+  `tag:kylelundstedt-songs`). Re-attach `vm:` integrations by hand after `new`.
+- **The `<name>-1` tailnet collision is now the norm on recreate.** The narrowed
+  credential (`auth_keys`, no `devices:core`) cannot delete the stale node, so
+  the new VM joins as `<name>-1` and provisioning prints the warning added in
+  3.0.14. Fix in the Tailscale admin console: delete the old node, rename
+  `<name>-1` -> `<name>`. Cosmetic only — the exe.dev origin is already correct.
+- **The exeslim-dev base is deliberately minimal.** telnyx-vm's webhook needed
+  `python3`, `python3-venv`, and `ffmpeg` via apt that the old exeuntu base had
+  by default. Inventory a VM's real runtime deps before deleting it.
+- **Back up untracked state first, and make it durable, not a migration one-off.**
+  telnyx-vm held ~2.2 MB of irreplaceable untracked data (voicemail recordings,
+  signed LOA PDFs, the secrets env file, Maildir). Now backed up nightly to the
+  `bucket-telnyx-vm` Tigris integration via a committed systemd timer
+  (`telnyx-webhook` repo `BACKUP.md`), so it survives future recreates too.
+- **Verify the pin twice, minutes apart** (socket-activation race, 3.0.1) and
+  confirm the base actually changed in `~/iv-provision.lock`. Shelley
+  self-updated to 0.971 on the fresh telnyx-vm and provisioning correctly
+  re-pinned it to 0.959.
+
+      The remaining `exeuntu` VM (`kgl-thoughts`) is the interesting one: that
+      base ships `claude`/`codex`/`uv` in `/usr/local/bin`, which is what
+      surfaced the 3.0.9 PATH-probe defect, and it carries the blog's custom
+      domains (`lundstedt.us`, `www.lundstedt.us`) that must be re-registered on
+      the new VM or the blog goes dark.
 
 ## Other
 
@@ -194,13 +232,13 @@ What remains:
       and refuses to delete the one `current` points at. Verified end-to-end on
       the authoring host (200 across a re-render; a no-`index.html` render keeps
       the previous release live).
-- [ ] The three pre-exeslim `exe`-base VMs still carry duplicate agent binaries
-      in `/usr/local/bin` (`claude`, `codex`, `uv`), shadowed by the copies in
-      `~/.local/bin` that win PATH. Since 3.0.9 the provisioner *reads* those
-      copies correctly, so they are no longer harmful — on `kgl-songs` they are
-      in fact the live ones — but a shadowed 260 MB `claude` is wasted disk
-      wherever the `~/.local/bin` copy wins. Decide whether to prune, or fold
-      into the recreate cadence above.
+- [ ] `kgl-thoughts` (the last pre-exeslim `exeuntu` VM) still carries duplicate
+      agent binaries in `/usr/local/bin` (`claude`, `codex`, `uv`), shadowed by
+      the `~/.local/bin` copies that win PATH. Since 3.0.9 the provisioner
+      *reads* those correctly so they are harmless, just wasted disk. Resolves
+      itself when `kgl-thoughts` is recreated onto exeslim-dev (which ships none
+      of them in `/usr/local/bin`) — fold into that migration rather than pruning
+      in place. `kgl-songs` and `telnyx-vm` already shed theirs by recreating.
 - [x] ~~`iv-entire-agent-shelley` unreachable over the tailnet.~~ Resolved
       2026-08-19: `tag:dev` added to the node in the Tailscale console, alongside
       its existing `tag:iv-aperture-pilot`. The VM was never off the tailnet —
