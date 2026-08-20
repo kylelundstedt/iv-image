@@ -216,4 +216,34 @@ grep -q '^EnvironmentFile=%h/.config/agentsview/source.env$' "$unit"
 grep -q '^UMask=0077$' "$unit"
 grep -q '^NoNewPrivileges=true$' "$unit"
 
+# remove_legacy_quarto must NOT strip quarto from a VM that deliberately keeps it
+# (lundstedt.us renders with quarto for a Pandoc fenced div apex cannot emit).
+# The regression: the fresh exeslim base has no /opt/quarto, and a naive migrate
+# would have provisioning delete the kept binary too. Test the keeps_quarto gate
+# in isolation, in a throwaway HOME, touching nothing real.
+quarto_gate=$(mktemp -d)
+trap 'rm -rf "$quarto_gate"' EXIT
+# Pull just the keeps_quarto function out of the script and exercise it.
+sed -n '/^keeps_quarto() {/,/^}/p' "$script" > "$quarto_gate/fn.sh"
+grep -q 'render-with-quarto' "$quarto_gate/fn.sh" || {
+  echo "keeps_quarto not found or lost its .render-with-quarto signal" >&2; exit 1; }
+
+HOME="$quarto_gate/empty"; mkdir -p "$HOME"
+if ( . "$quarto_gate/fn.sh"; keeps_quarto ); then
+  echo "keeps_quarto returned true with no markers present" >&2; exit 1; fi
+
+HOME="$quarto_gate/marker"; mkdir -p "$HOME/thoughts"
+touch "$HOME/thoughts/.render-with-quarto"
+if ( . "$quarto_gate/fn.sh"; keeps_quarto ); then :; else
+  echo "keeps_quarto ignored a .render-with-quarto marker" >&2; exit 1; fi
+
+HOME="$quarto_gate/optout"; mkdir -p "$HOME/.config/iv-provision"
+touch "$HOME/.config/iv-provision/keep-quarto"
+if ( . "$quarto_gate/fn.sh"; keeps_quarto ); then :; else
+  echo "keeps_quarto ignored the keep-quarto opt-out marker" >&2; exit 1; fi
+
+# And remove_legacy_quarto must consult the gate, not delete unconditionally.
+grep -q 'if keeps_quarto; then' "$script" || {
+  echo "remove_legacy_quarto no longer guards on keeps_quarto" >&2; exit 1; }
+
 printf '%s\n' 'provision script tests passed'
