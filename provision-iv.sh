@@ -1032,8 +1032,52 @@ ROTATE
 
   sudo loginctl enable-linger "$USER"
   uctl daemon-reload
-  uctl enable --now agentsview-source.service
-  echo "AgentsView source enabled (tailnet + per-host token present)"
+  uctl enable agentsview-source.service
+
+  # RESTART, not `enable --now`. `--now` starts an INACTIVE unit and is a no-op
+  # against a running one, so a re-provision left the old process alive -- and
+  # this daemon resolves its bind address ONCE, at exec:
+  # agentsview-source-daemon reads `tailscale ip -4` and bakes it into --host
+  # (and the MagicDNS name into --public-url).
+  #
+  # A VM's tailnet IP and hostname both change on recreate. So: rebuild -> new
+  # IP -> re-provision rewrites this unit file -> `enable --now` sees `active`
+  # and does nothing -> the weeks-old process keeps listening on an address the
+  # kernel no longer has. The service reads `active (running)`, systemd is
+  # content, and the collector gets a connection timeout. Provisioning exits 0.
+  #
+  # Measured 2026-08-21 across five rebuilt VMs -- iv-home, iv-docs, iv-gitlake,
+  # iv-gitlake-examples, iv-ave-adapters -- every one active, every one bound to
+  # a stale IP, every one unreachable. On iv-docs even `curl` from the VM itself
+  # could not reach its own daemon. They had been dark since 07-29..08-01 and the
+  # agentsview healthcheck had been red the whole time, read as "the service did
+  # not start" when in fact it had never been restarted.
+  #
+  # try-restart rather than restart: it restarts the unit if it is running and
+  # does nothing if it is not, leaving the `enable` above to arm it for boot
+  # while the start below actually brings it up. Plain `restart` would also work
+  # but obscures which of the two cases we are in.
+  uctl try-restart agentsview-source.service
+  uctl start agentsview-source.service
+
+  # Verify the daemon is bound to THIS host's current address, rather than
+  # trusting that a restart was enough. The whole failure above is a unit that
+  # reports healthy while serving nobody, so assert the observable property --
+  # something is listening on the current tailnet IP -- not the unit state.
+  # Non-fatal: a slow start should not fail an otherwise good provision, but it
+  # must be visible in the log rather than silently assumed.
+  av_ip=$(tailscale ip -4 2>/dev/null | head -1)
+  av_bound=""
+  for _ in 1 2 3 4 5; do
+    if ss -ltnH 2>/dev/null | grep -q "${av_ip}:8080"; then av_bound=yes; break; fi
+    sleep 2
+  done
+  if [[ -n $av_bound ]]; then
+    echo "AgentsView source enabled and listening on ${av_ip}:8080"
+  else
+    echo "  WARNING: AgentsView source is not listening on ${av_ip}:8080" >&2
+    echo "  WARNING: check 'systemctl --user status agentsview-source'" >&2
+  fi
 else
   uctl disable --now agentsview-source.service >/dev/null 2>&1 || true
   uctl daemon-reload

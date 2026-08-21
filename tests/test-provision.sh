@@ -216,6 +216,41 @@ grep -q '^EnvironmentFile=%h/.config/agentsview/source.env$' "$unit"
 grep -q '^UMask=0077$' "$unit"
 grep -q '^NoNewPrivileges=true$' "$unit"
 
+# The source daemon binds ONE address, resolved at exec from `tailscale ip -4`.
+# A recreate changes that address, so a re-provision MUST restart the unit or
+# the surviving process keeps its dead bind while systemd reports it healthy.
+# `enable --now` does not restart a running unit -- that regression left five
+# rebuilt VMs serving nobody for three weeks behind a green unit state.
+if grep -q 'enable --now agentsview-source' "$script"; then
+  echo "agentsview-source uses 'enable --now', which never restarts a running" >&2
+  echo "unit -- a recreated VM keeps its stale --host bind. Use try-restart." >&2
+  exit 1
+fi
+grep -q 'uctl try-restart agentsview-source.service' "$script" || {
+  echo "provisioning must try-restart agentsview-source so a new tailnet IP" >&2
+  echo "is picked up on re-provision" >&2
+  exit 1
+}
+# ...and must verify the observable property (a listener on the CURRENT ip),
+# not the unit state, since the failure mode is precisely a healthy-looking
+# unit that is unreachable.
+grep -q 'av_ip=\$(tailscale ip -4' "$script" || {
+  echo "provisioning no longer verifies the agentsview bind address" >&2
+  exit 1
+}
+grep -q 'is not listening on \${av_ip}:8080' "$script" || {
+  echo "provisioning must warn when agentsview is not listening on the" >&2
+  echo "current tailnet IP after restart" >&2
+  exit 1
+}
+
+# The `disable` branch keeps `--now`: there, stopping a running unit IS the
+# intent, and `disable --now` does stop one.
+grep -q 'uctl disable --now agentsview-source.service' "$script" || {
+  echo "the fail-closed disable branch must still stop a running unit" >&2
+  exit 1
+}
+
 # remove_legacy_quarto must NOT strip quarto from a VM that deliberately keeps it
 # (lundstedt.us renders with quarto for a Pandoc fenced div apex cannot emit).
 # The regression: the fresh exeslim base has no /opt/quarto, and a naive migrate
