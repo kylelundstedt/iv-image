@@ -242,14 +242,21 @@ Telnyx webhook URL, blog DNS all key off it). What bit us, in order of surprise:
 
 ## Other
 
-- [ ] **Audit the fleet for other exec-time-resolved state that a re-provision
-      never refreshes.** `agentsview-source` was fixed 2026-08-21 (see below),
-      but the *class* is unexamined: any long-lived unit that reads host
-      identity once at exec and is started with `enable --now` has the same
-      latent bug, and the same silence — systemd reports `active`, provisioning
-      exits 0, and only a downstream healthcheck notices. Grep the provisioner
-      for `enable --now` against units whose ExecStart resolves an IP, hostname,
-      or token at startup.
+- [x] ~~**Audit the provisioner for other exec-time-resolved state that a
+      re-provision never refreshes.**~~ Done 2026-08-21, same session as the
+      `agentsview-source` fix below. The class is: a long-lived unit that reads
+      host identity **once at exec**, started with `enable --now`, which is a
+      no-op against an already-running unit — so a recreate changes the identity
+      and nothing restarts to pick it up, silently.
+
+      Only two other `enable --now` calls exist in `provision-iv.sh`, and
+      neither is affected:
+      - `tailscaled` (L599) — it *provides* the tailnet identity rather than
+        caching one, and re-resolves on its own.
+      - `iv-apt-upgrade.timer` (L1275) — a timer; no exec-time host state.
+
+      So `agentsview-source` was the only instance. Worth re-running this grep
+      when a new long-lived unit is added, but there is no outstanding work.
 - [x] ~~`agentsview-source` kept a stale bind address across a VM recreate.~~
       Fixed 2026-08-21. `enable --now` starts an *inactive* unit and is a no-op
       against a running one, but `agentsview-source-daemon` resolves
