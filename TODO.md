@@ -242,6 +242,40 @@ Telnyx webhook URL, blog DNS all key off it). What bit us, in order of surprise:
 
 ## Other
 
+- [ ] **Audit the fleet for other exec-time-resolved state that a re-provision
+      never refreshes.** `agentsview-source` was fixed 2026-08-21 (see below),
+      but the *class* is unexamined: any long-lived unit that reads host
+      identity once at exec and is started with `enable --now` has the same
+      latent bug, and the same silence — systemd reports `active`, provisioning
+      exits 0, and only a downstream healthcheck notices. Grep the provisioner
+      for `enable --now` against units whose ExecStart resolves an IP, hostname,
+      or token at startup.
+- [x] ~~`agentsview-source` kept a stale bind address across a VM recreate.~~
+      Fixed 2026-08-21. `enable --now` starts an *inactive* unit and is a no-op
+      against a running one, but `agentsview-source-daemon` resolves
+      `tailscale ip -4` **once, at exec**, and bakes it into `--host`. So a
+      recreate (new tailnet IP) + re-provision left the weeks-old process
+      listening on an address the kernel no longer had. The unit read
+      `active (running)` the whole time.
+
+      Found on all five VMs that had been rebuilt: `iv-home`, `iv-docs`,
+      `iv-gitlake`, `iv-gitlake-examples`, `iv-ave-adapters` — dark since
+      07-29..08-01, `--public-url` still carrying the pre-rename `<name>-next`
+      MagicDNS names. On `iv-docs`, `curl` from the VM *itself* could not reach
+      its own daemon. The `agentsview` healthcheck had been red throughout and
+      was being read as "the provisioning step didn't run", which sent the
+      investigation at starting a service that was already running.
+
+      Provisioning now `try-restart`s the unit and verifies the observable
+      property — a listener on the **current** tailnet IP — rather than the unit
+      state, because a healthy-looking unit serving nobody is the entire failure
+      mode. `test-provision.sh` makes `enable --now agentsview-source` a hard
+      failure. All 11 fleet hosts verified 200/401 afterwards.
+
+      Note this is the *second* distinct way a recreate silently drops a VM from
+      AgentsView aggregation; the first (orphaned per-host source token, 401
+      forever) is in the base-recreate playbook above. Both were invisible for
+      weeks. The recreate playbook is the right place to look for a third.
 - [x] ~~`provision-docsite`: separate the rendered build directory from the
       nginx docroot so a preview render cannot modify the live site.~~ Done: it
       renders to the build tree (`_site`, which `render-md-site` wipes with
